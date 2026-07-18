@@ -7,6 +7,7 @@ import { create } from "zustand";
 export type WorkbenchCommand = {
     nonce: number;
     prompt?: string;
+    attachments?: File[];
     run: boolean;
 };
 

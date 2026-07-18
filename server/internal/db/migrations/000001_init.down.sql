@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS usage_records;
+DROP TABLE IF EXISTS user_quotas;
+DROP TABLE IF EXISTS channels;
+DROP TABLE IF EXISTS generation_logs;
+DROP TABLE IF EXISTS files;
+DROP TABLE IF EXISTS assets;
+DROP TABLE IF EXISTS canvas_projects;
+DROP TABLE IF EXISTS users;

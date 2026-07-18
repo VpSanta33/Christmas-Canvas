@@ -1,126 +1,235 @@
 <p align="center">
-  <img src="web/public/logo.svg" width="96" alt="infinite-canvas logo">
+  <img src="web/public/logo.svg" width="96" alt="圣诞AI画布 logo">
 </p>
 
-<h1 align="center">无限画布 (infinite-canvas)</h1>
+<h1 align="center">圣诞AI画布</h1>
 
 <p align="center">
-  <a href="https://linux.do/"><img src="https://img.shields.io/badge/Linux.do-Community-2b6de8?style=flat-square" alt="Linux.do"></a>
-  <a href="https://render.com/deploy?repo=https://github.com/basketikun/infinite-canvas"><img src="https://img.shields.io/badge/Render-Deploy-46e3b7?style=flat-square&logo=render&logoColor=111111" alt="Deploy to Render"></a>
-  <a href="https://github.com/basketikun/infinite-canvas"><img src="https://img.shields.io/github/stars/basketikun/infinite-canvas?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="https://github.com/basketikun/infinite-canvas/tags"><img src="https://img.shields.io/github/v/tag/basketikun/infinite-canvas?style=flat-square&label=version" alt="Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
-  <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-7-646cff?style=flat-square&logo=vite&logoColor=white" alt="Vite"></a>
-  <a href="https://reactrouter.com/"><img src="https://img.shields.io/badge/React_Router-7-ca4245?style=flat-square&logo=reactrouter&logoColor=white" alt="React Router"></a>
+  面向 AI 图片、视频与多媒体创作的开源 AI 画布工作台
 </p>
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/50077?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-50077" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/50077/daily?language=TypeScript" alt="basketikun%2Finfinite-canvas | Trendshift" width="250" height="55"></a>
-</p>
+圣诞AI画布是基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发的 AI 创作工作台。项目把模型调用、素材管理和可视化工作流放进同一个创作空间，既可以作为无需账号的浏览器本地工具运行，也可以接入仓库内置的 Go 后端，获得账号、积分、服务端 AI 渠道、对象存储、创作者社区和管理后台能力。
 
-<p align="center">
-  <a href="docs/content/docs/overview/quick-start.mdx">快速开始</a> · <a href="docs/content/docs/overview/features.mdx">功能介绍</a> · <a href="docs/content/docs/overview/render.mdx">Render 部署</a> · <a href="docs/content/docs/overview/docker.mdx">Docker 部署</a> · <a href="docs/content/docs/canvas/canvas-node-manual.mdx">画布节点操作手册</a> · <a href="docs/content/docs/canvas/canvas-shortcuts.mdx">画布快捷键</a> · <a href="CLA.md">贡献者协议</a> · <a href="SECURITY.md">漏洞提交</a> · <a href="docs/content/docs/progress/todo.mdx">待办事项</a> · <a href="canvas-agent/README.md">本地 Canvas Agent</a> · <a href="plugins/infinite-canvas">Codex app 插件</a>
-</p>
+> [!IMPORTANT]
+> 项目仍在快速迭代，数据结构和部署配置可能发生变化。升级前请备份 PostgreSQL、MinIO 数据卷以及浏览器本地数据。
 
-无限画布是一款面向图片创作的开源工作台。它把画布编排、AI 图片生成、参考图编辑、对话助手、提示词库和素材沉淀放在同一个界面里，适合用来探索视觉方案并连续迭代图片结果。
+## 功能概览
 
-> [!CAUTION]
-> 项目目前处于开发阶段，不保证历史数据兼容。各种本地存储格式都可能直接调整，欢迎关注后续更新，当前更适合个人/本地部署，不建议直接公网多人共用。
->
-> 如果你需要稳定维护自己的分支，建议自行 fork 后独立开发。二次开发与 PR 请保留原作者信息和前端页面标识。
+### 无限画布
 
-## 核心功能
+- 多画布项目管理，支持节点拖拽、缩放、连线、框选、分组、小地图、撤销与重做。
+- 内置文本、图片、视频、音频、生成配置和组节点。
+- 图片裁剪、切图、蒙版编辑、放大和角度调整等画布内工具。
+- 画布、素材和媒体文件的导入导出，以及 WebDAV 数据同步。
 
-- 无限画布：多画布项目、节点拖拽缩放、连线、小地图、撤销重做、导入导出。
-- AI 创作：浏览器前台直连你配置的 OpenAI 兼容接口，支持文生图、图生图、参考图编辑、文本问答、音频和视频生成。
-- 画布助手：围绕选中节点和上游节点对话、生图，并把结果插回画布。
-- 本地 Agent：通过本机 Canvas Agent 连接 Codex / Claude Code，让 Agent 通过 MCP 操作当前画布；
-- Codex App 插件：提供 Codex app 插件，安装后会自动注册 MCP 并尝试拉起本地 Agent。
-- 插件系统：支持通过 URL 动态安装 / 启用 / 更新 / 卸载远程节点插件，并提供 TypeScript SDK 自行开发画布节点插件。
-- 自定义接口调用：可自定义生图 / 视频接口的调用方式，灵活适配各类中转站与自建服务。
-- 提示词库：浏览器前端直连多个 GitHub 开源项目，并缓存到 IndexedDB。
+### AI 创作
 
-完整功能说明见 [功能介绍](docs/content/docs/overview/features.mdx)。
+- 独立的图片与视频工作台，以及画布节点内的图片、视频、音频和文本生成。
+- 支持参考图片、参考视频、参考音频、生成参数和历史记录。
+- 支持 OpenAI 兼容格式与 Gemini 格式渠道，并允许通过自定义请求脚本适配其他服务。
+- backend 模式由服务端注入第三方 API Key，支持 SSE、渠道优先级、故障转移、健康检测和自动暂停。
 
-如果你在为担心没有合适的生图API来发愁，可以查看该免费生图项目：[chatgpt2api](https://github.com/basketikun/chatgpt2api)
+### 平台与社区
 
-## 快速开始
+- 邮箱注册、验证码、JWT 登录、刷新令牌、会话撤销和登录防爆破。
+- 注册赠送积分、按模型/能力计费、积分流水、每日配额和失败退款。
+- 创作者主页、关注、作品流、收藏、点赞和创作大赛投稿。
+- 大赛审核、精选、积分结算，以及作品画布快照和创作配方展示。
 
-AI API Key、Base URL、画布、素材和生成记录默认保存在浏览器本地。
+### 管理后台
 
-### 本地开发
+- `operator`：查看平台概览、调用记录、渠道健康、用量统计和大赛审核。
+- `admin`：在 operator 能力之外管理用户、角色、积分、模型渠道、平台设置、公告、邮件、对象存储、安全审计和文件清理。
+- 渠道密钥与后台保存的 SMTP/S3 密钥使用 `CHANNEL_ENC_KEY` 加密后入库，不向前端返回明文。
+
+### 节点插件
+
+- 支持从 URL 安装、启用、更新和卸载第三方画布节点插件。
+- 提供 TypeScript SDK、构建工具和插件模板。
+- 仓库包含 Markdown、SVG、HTML、3D 全景和便利贴等示例插件。
+
+插件开发说明见 [`plugins/canvas/README.md`](plugins/canvas/README.md)。第三方插件会在页面上下文中执行，只应安装可信来源。
+
+## 运行模式
+
+| 模式 | 适用场景 | 数据与密钥 | 后端能力 |
+| --- | --- | --- | --- |
+| `local` | 个人使用、快速体验、离线画布 | 画布、素材和模型配置保存在浏览器；浏览器直接请求配置的模型服务 | 不需要账号；无积分、社区和管理后台 |
+| `backend` | 自托管平台、多人使用 | 业务数据进入 PostgreSQL，媒体进入 S3/MinIO，第三方 API Key 由服务端保存 | 账号、积分、配额、代理、社区、赛事和后台管理 |
+
+前端通过 `APP_MODE`（容器运行时）或 `VITE_APP_MODE`（构建/开发时）选择模式。backend 模式默认使用同源 `/api`，也可以通过 `API_BASE_URL` 或 `VITE_API_BASE_URL` 指向独立后端。
+
+## 系统架构
+
+```text
+Browser
+  |
+  v
+Nginx :3000  ---- static files ----> React / Vite application
+  |
+  +---- /api/* ----> Go / Gin API :8080
+                         |---- PostgreSQL: users, projects, assets, credits, settings
+                         |---- Redis: rate limits and login protection
+                         |---- MinIO/S3: images, videos, audio and uploaded files
+                         +---- AI providers: server-side proxy and credential injection
+```
+
+| 目录 | 主要职责 | 技术 |
+| --- | --- | --- |
+| `web/` | 画布、创作台、社区和管理后台 | React 19、Vite 7、React Router 7、Zustand、Ant Design 6、Tailwind CSS 4、localForage |
+| `server/cmd/api/` | API 入口、依赖装配和优雅停机 | Go 1.26 |
+| `server/internal/` | auth、credits、proxy、storage、contest、admin 等领域模块 | Gin、pgx、JWT、bcrypt、go-redis、minio-go |
+| `server/internal/db/migrations/` | 启动时自动执行的数据库迁移 | PostgreSQL、golang-migrate |
+| `plugins/canvas/` | 节点插件、SDK、模板和官方插件注册表 | TypeScript、esbuild |
+
+## Docker 一键部署
+
+根目录 Compose 默认以 backend 模式启动完整环境：前端、API、PostgreSQL、Redis、MinIO 和 Mailpit。默认开发配置内置了可运行的示例密钥，因此不创建 `.env` 也可以直接启动；生产环境必须先创建 `.env` 并替换所有默认凭据。
 
 ```bash
-git clone git@github.com:basketikun/infinite-canvas.git
-cd infinite-canvas
+docker compose up --build -d
+docker compose ps
+```
+
+生产或自定义部署使用：
+
+```bash
+cp .env.example .env
+# 编辑 .env，至少替换 JWT_SECRET、CHANNEL_ENC_KEY、数据库和 MinIO 凭据
+docker compose up --build -d
+```
+
+启动后可访问：
+
+| 服务 | 地址 | 说明 |
+| --- | --- | --- |
+| Web | <http://localhost:3000> | 主应用与管理后台 |
+| Health | <http://localhost:3000/healthz> | 应返回 `{"ok":true}` |
+| Mailpit | <http://localhost:8025> | 本地验证码邮件收件箱 |
+| MinIO Console | <http://localhost:9001> | 默认账号见根目录 `.env` |
+
+Compose 默认开启邮箱验证。注册后在 Mailpit 中读取 6 位验证码；第一个完成注册的用户会自动成为 `admin`，可从 `/admin` 配置 AI 渠道与平台参数。
+
+默认只将 Web、Mailpit 网页和 MinIO 控制台映射到宿主机，API、PostgreSQL、Redis 和 MinIO S3 在 Compose 网络内部通信，可通过 `WEB_PORT`、`MAILPIT_WEB_PORT` 和 `MINIO_CONSOLE_PORT` 调整公开端口。
+
+查看日志和停止服务：
+
+```bash
+docker compose logs -f api app
+docker compose down
+```
+
+`docker compose down` 保留数据库和媒体卷；确认不再需要数据时才使用 `docker compose down -v`。
+
+### 仅运行本地模式
+
+纯前端模式不启动 API 和基础设施，适合个人使用：
+
+```bash
+docker compose -f docker-compose.local.yml up --build -d
+```
+
+打开 <http://localhost:3000> 后，在应用配置中填写自己的模型 Base URL 和 API Key。数据默认保存在当前浏览器中。
+
+## 本地开发
+
+### 环境要求
+
+- 前端：Bun 1.3+（也可使用兼容的 Node.js 包管理流程）
+- 后端：Go 1.26+
+- 基础设施：Docker Engine 与 Docker Compose
+
+### 启动后端依赖
+
+```bash
+cd server
+docker compose up -d postgres redis minio mailpit
+cp .env.example .env
+go run ./cmd/api
+```
+
+后端默认监听 <http://localhost:8080>，启动时会自动执行 `server/internal/db/migrations/` 中的迁移。Mailpit Web UI 位于 <http://localhost:8025>。
+
+### 启动前端
+
+```bash
 cd web
+cp .env.example .env
 bun install
 bun run dev
 ```
 
-### Docker 运行
+`web/.env` 的典型配置：
 
-```bash
-git clone git@github.com:basketikun/infinite-canvas.git
-cd infinite-canvas
-docker compose up -d
+```dotenv
+# 纯前端模式
+VITE_APP_MODE=local
+VITE_API_BASE_URL=/api
+
+# 接入本地 Go 后端时改为：
+# VITE_APP_MODE=backend
+# VITE_API_BASE_URL=http://localhost:8080/api
 ```
 
-运行后默认端口3000，可访问 `http://localhost:3000`。
+开发服务器地址为 <http://localhost:3000>。使用独立后端地址时，应确保后端 `CORS_ORIGINS` 包含该前端来源。
 
-首次打开后进入右上角配置，填入自己的 OpenAI 兼容 `Base URL` 和 `API Key`。
+### 常用检查
 
-如果默认的OpenAI接口调用方式与您的API不同，可自定义生图/视频脚本调用。
+```bash
+cd web
+bun run typecheck
+bun run lint
+bun run build
 
-## 效果展示
+cd ../server
+go test ./...
+```
 
-<table width="100%">
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/TDFvGWDT/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/zVwJq3YS/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/PvY3qhhK/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/7D04LwN/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/bj30FtS5/5.png" alt="5" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/hxRvjw51/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/jkWsF8q1/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/XrnfXHx7/image.png" alt="image" border="0"></td>
-  </tr>
-</table>
+## 关键配置
 
-## 联系方式
+| 变量 | 默认值/要求 | 作用 |
+| --- | --- | --- |
+| `JWT_SECRET` | 必填；启用邮箱验证时至少 32 字节 | 签发 JWT，并参与验证码摘要计算 |
+| `CHANNEL_ENC_KEY` | 必填；64 位 hex（32 字节） | AES-256-GCM 加密渠道、SMTP 和对象存储密钥 |
+| `DATABASE_URL` | PostgreSQL DSN | 后端业务数据与迁移目标 |
+| `REDIS_ADDR` | `redis:6379`（Compose） | 限流、每日配额与登录保护；不可用时相关限流会 fail-open |
+| `S3_*` / `STORAGE_*` | 见 `.env.example` | MinIO/S3 连接、目录前缀与公开文件 URL |
+| `ALLOW_REGISTRATION` | `true` | 是否开放用户自助注册 |
+| `REGISTER_GRANT_CREDITS` | `100` | 新用户完成注册后赠送积分 |
+| `EMAIL_VERIFICATION_ENABLED` | Compose 默认为 `true` | 是否要求注册邮箱验证码 |
+| `SMTP_*` | 本地指向 Mailpit | 验证邮件发送配置 |
+| `CORS_ORIGINS` | `http://localhost:3000` | 允许访问 API 的前端来源，多个值用逗号分隔 |
+| `ANALYTICS_GA4_ID` / `ANALYTICS_BAIDU_ID` | 空 | 可选统计 ID，留空不会加载对应统计脚本 |
 
-项目定制二次开发需求 / 生图 API 需求可联系。
+后端完整变量模板见 [`server/.env.example`](server/.env.example)。多数平台设置可由超级管理员在后台修改；环境变量仍作为首次启动和数据库未配置时的回退值。
 
-邮箱：1844025705@qq.com · QQ：1844025705
+## 生产部署注意事项
 
-## 赞助支持
+1. 使用密码管理器或密钥服务生成并保存独立的 `JWT_SECRET` 与 `CHANNEL_ENC_KEY`；`CHANNEL_ENC_KEY` 可用 `openssl rand -hex 32` 生成，已加密数据不能在丢失旧密钥后恢复。
+2. 替换 PostgreSQL、Redis、MinIO 的默认凭据，不要将数据库、Redis、MinIO Console 或 Mailpit 直接暴露到公网。
+3. 使用 HTTPS 反向代理公开 Web 服务，并把 `CORS_ORIGINS` 限制为实际站点来源。
+4. 生产环境移除 Mailpit，配置支持 `starttls` 或 `tls` 的真实 SMTP；`SMTP_MODE=none` 只适合本地开发。
+5. 为 PostgreSQL 和对象存储建立备份策略；升级前先备份数据卷并阅读 [`CHANGELOG.md`](CHANGELOG.md)。
+6. 插件代码拥有页面上下文权限，平台运营方应控制官方插件源并审核第三方插件。
 
-本项目长期开放广告赞助合作，欢迎品牌 / 产品投放，你的支持是持续更新的动力！
+## API 概览
 
-有广告赞助意向请通过上方联系方式沟通。
+所有业务接口位于 `/api`。除公开平台信息、作品展示和认证端点外，其余接口均要求 Bearer Token。
 
-## 社区支持
+| 路径 | 说明 |
+| --- | --- |
+| `/api/auth/*` | 注册、邮箱验证、登录、刷新、当前用户和退出 |
+| `/api/projects` | 用户画布项目列表、替换、写入和删除 |
+| `/api/assets` | 用户素材列表、替换、写入和删除 |
+| `/api/files/*` | 鉴权媒体上传、下载和回收站删除 |
+| `/api/channels` | 前端可用渠道、默认模型和计费目录，不返回 API Key |
+| `/api/ai/:channelId/*` | AI 请求代理、密钥注入、限流、计费和故障转移 |
+| `/api/credits/*` | 用户积分余额与流水 |
+| `/api/contest/*`、`/api/creators/*` | 大赛、作品、关注、收藏和创作者页面 |
+| `/api/admin/*` | 渠道、用户、平台、存储、安全、审计和运营管理 |
 
-学 AI，上 L 站：[LinuxDO](https://linux.do/)
-
-点击链接加入群聊【AI开源交流】：https://qm.qq.com/q/DFnKzZ807u
+健康检查不在 `/api` 下：`GET /healthz`。
 
 ## 开源协议
 
-本项目使用 GNU Affero General Public License v3.0，见 [LICENSE](LICENSE)。
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=basketikun%2Finfinite-canvas&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=basketikun/infinite-canvas&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=basketikun/infinite-canvas&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=basketikun/infinite-canvas&type=date&legend=top-left" />
- </picture>
-</a>
+本项目采用 [GNU Affero General Public License v3.0](LICENSE)。通过网络向用户提供修改后的版本时，请遵守 AGPL-3.0 对源代码公开的要求。

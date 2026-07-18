@@ -1,9 +1,14 @@
 services:
   app:
-    image: infinite-canvas:local
+    image: christmas-ai-canvas-web:local
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      APP_MODE: local
+      API_BASE_URL: /api
+      ANALYTICS_GA4_ID: ${ANALYTICS_GA4_ID:-}
+      ANALYTICS_BAIDU_ID: ${ANALYTICS_BAIDU_ID:-}
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:3000"
     restart: unless-stopped

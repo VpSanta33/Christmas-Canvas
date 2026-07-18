@@ -3,25 +3,18 @@ import type { NavigateFunction } from "react-router-dom";
 import { fetchPrompts } from "@/services/api/prompts";
 import { uploadImage } from "@/services/image-storage";
 import { imageAspectOptions, imageQualityOptions } from "@/components/image-settings-panel";
-import { videoResolutionOptions, videoSecondOptions, videoSizeOptions } from "@/components/video-settings-panel";
+import { normalizeVideoResolutionValue, videoSizeOptions } from "@/components/video-settings-panel";
+import { configuredVideoDurations, configuredVideoQualities } from "@/lib/generation-cost";
+import { isSeedanceFastModel, isSeedanceVideoConfig, seedanceDurationOptions, seedanceResolutionOptions } from "@/lib/seedance-video";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAssetStore } from "@/stores/use-asset-store";
-import { modelOptionLabel, modelOptionName, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore } from "@/stores/use-config-store";
+import { modelOptionLabel, modelOptionName, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig } from "@/stores/use-config-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 
 // 在网页端执行 Agent 的「站点级」工具（画布列表、工作台生成、提示词搜索、资产增删查等）。
 // 这些工具的数据都在浏览器本地（localforage / zustand），因此由本模块直接读写对应 store 后返回结果。
 
-export const SITE_TOOL_NAMES = [
-    "canvas_list_projects",
-    "workbench_image_get_config",
-    "workbench_image_generate",
-    "workbench_video_get_config",
-    "workbench_video_generate",
-    "prompts_search",
-    "assets_list",
-    "assets_add",
-] as const;
+export const SITE_TOOL_NAMES = ["canvas_list_projects", "workbench_image_get_config", "workbench_image_generate", "workbench_video_get_config", "workbench_video_generate", "prompts_search", "assets_list", "assets_add"] as const;
 
 export type SiteToolName = (typeof SITE_TOOL_NAMES)[number];
 
@@ -68,7 +61,9 @@ export async function runSiteTool(name: SiteToolName, input: SiteToolInput, navi
 function listCanvasProjects(input: SiteToolInput) {
     const { projects, hydrated } = useCanvasStore.getState();
     if (!hydrated) throw new Error("画布还在加载中，请稍后重试");
-    const keyword = String(input.keyword || "").trim().toLowerCase();
+    const keyword = String(input.keyword || "")
+        .trim()
+        .toLowerCase();
     const filtered = keyword ? projects.filter((project) => project.title.toLowerCase().includes(keyword)) : projects;
     const { page, pageSize, start, end } = paginate(input, filtered.length, 20);
     const items = filtered.slice(start, end).map((project) => ({
@@ -125,6 +120,8 @@ function runImageWorkbench(input: SiteToolInput, navigate: NavigateFunction) {
 function getVideoConfig() {
     const { config } = useConfigStore.getState();
     const model = config.videoModel || config.model;
+    const videoConfig = { ...config, model, videoModel: model };
+    const options = configuredVideoOptions(videoConfig);
     return {
         current: {
             model,
@@ -137,30 +134,39 @@ function getVideoConfig() {
         },
         models: selectableModelsByCapability(config, "video").map((value) => ({ value, label: modelOptionLabel(config, value) })),
         sizeOptions: videoSizeOptions,
-        secondsOptions: videoSecondOptions,
-        resolutionOptions: videoResolutionOptions,
+        secondsOptions: options.durations.map(String),
+        resolutionOptions: options.qualities.map((value) => ({ value, label: `${value}p` })),
     };
 }
 
 function runVideoWorkbench(input: SiteToolInput, navigate: NavigateFunction) {
     const configStore = useConfigStore.getState();
     const applied: Record<string, unknown> = {};
+    let resolution = normalizeVideoResolutionValue(configStore.config.vquality || "720");
+    let selectedModel = configStore.config.videoModel || configStore.config.model;
     if (typeof input.model === "string" && input.model.trim()) {
         const value = normalizeModelOptionValue(input.model, configStore.config.channels) || input.model;
         configStore.updateConfig("videoModel", value);
+        selectedModel = value;
         applied.model = value;
     }
     if (typeof input.size === "string" && input.size.trim()) {
         configStore.updateConfig("size", input.size);
         applied.size = input.size;
     }
-    if (typeof input.seconds === "string" && input.seconds.trim()) {
-        configStore.updateConfig("videoSeconds", input.seconds);
-        applied.seconds = input.seconds;
-    }
+    const currentConfig = { ...useConfigStore.getState().config, model: selectedModel, videoModel: selectedModel };
     if (typeof input.resolution === "string" && input.resolution.trim()) {
-        configStore.updateConfig("vquality", input.resolution);
-        applied.resolution = input.resolution;
+        const next = normalizeVideoResolutionValue(input.resolution);
+        if (!configuredVideoOptions(currentConfig).qualities.includes(next)) throw new Error(`后台未配置或当前模型不支持 ${next}p，请从可用分辨率中选择`);
+        resolution = next;
+        configStore.updateConfig("vquality", next);
+        applied.resolution = next;
+    }
+    if (typeof input.seconds === "string" && input.seconds.trim()) {
+        const seconds = Math.floor(Number(input.seconds));
+        if (!configuredVideoOptions({ ...currentConfig, vquality: resolution }).durations.includes(seconds)) throw new Error(`后台未配置或当前模型不支持 ${input.seconds} 秒，请从可用时长中选择`);
+        configStore.updateConfig("videoSeconds", String(seconds));
+        applied.seconds = String(seconds);
     }
     if (typeof input.generateAudio === "boolean") {
         configStore.updateConfig("videoGenerateAudio", String(input.generateAudio));
@@ -175,6 +181,25 @@ function runVideoWorkbench(input: SiteToolInput, navigate: NavigateFunction) {
     navigate("/video");
     useWorkbenchAgentStore.getState().dispatchVideo({ prompt, run });
     return { ok: true, navigated: "/video", prompt, run, applied, note: run ? "已跳转视频创作台并触发生成，结果请稍后在工作台查看" : "已跳转视频创作台并填入参数，未触发生成" };
+}
+
+function configuredVideoOptions(config: AiConfig) {
+    let qualities = configuredVideoQualities(config);
+    const seedance = isSeedanceVideoConfig(config);
+    if (seedance) {
+        const supported = new Set(seedanceResolutionOptions.map((item) => item.value.replace(/p$/, "")));
+        qualities = qualities.filter((quality) => supported.has(quality) && !(quality === "1080" && isSeedanceFastModel(modelOptionName(config.model || config.videoModel))));
+    }
+    const normalizedQuality = normalizeVideoResolutionValue(config.vquality || "720");
+    const currentQuality = qualities.includes(normalizedQuality) ? normalizedQuality : qualities[0] || normalizedQuality;
+    let durations = configuredVideoDurations(config, currentQuality);
+    if (seedance) {
+        const supported = new Set<number>(seedanceDurationOptions);
+        durations = durations.filter((duration) => supported.has(duration));
+    } else {
+        durations = durations.filter((duration) => duration > 0);
+    }
+    return { qualities, durations };
 }
 
 async function searchPrompts(input: SiteToolInput) {
@@ -196,7 +221,9 @@ function listAssets(input: SiteToolInput) {
     const { assets, hydrated } = useAssetStore.getState();
     if (!hydrated) throw new Error("资产还在加载中，请稍后重试");
     const kind = input.kind === "text" || input.kind === "image" || input.kind === "video" ? input.kind : "all";
-    const keyword = String(input.keyword || "").trim().toLowerCase();
+    const keyword = String(input.keyword || "")
+        .trim()
+        .toLowerCase();
     const filtered = assets.filter((asset) => {
         if (kind !== "all" && asset.kind !== kind) return false;
         if (!keyword) return true;
@@ -241,7 +268,15 @@ async function addAsset(input: SiteToolInput) {
         } catch {
             throw new Error("无法读取该图片地址，请改用 dataURL 或可跨域访问的图片链接");
         }
-        const id = store.addAsset({ kind: "image", title, coverUrl: stored.url, tags, source, note, data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType } });
+        const id = store.addAsset({
+            kind: "image",
+            title,
+            coverUrl: stored.url,
+            tags,
+            source,
+            note,
+            data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType },
+        });
         return { ok: true, id, kind: "image" };
     }
     throw new Error("assets_add 仅支持 kind=text 或 kind=image");

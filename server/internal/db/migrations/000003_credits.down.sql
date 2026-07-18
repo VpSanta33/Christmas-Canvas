@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS credit_ledger;
+ALTER TABLE users DROP COLUMN IF EXISTS credits;

@@ -11,4 +11,8 @@ interface ImportMetaEnv {
     readonly VITE_ANALYTICS_GA4_ID?: string;
     // 百度统计站点 ID
     readonly VITE_ANALYTICS_BAIDU_ID?: string;
+    // 执行模式："local"（默认）或 "backend"
+    readonly VITE_APP_MODE?: string;
+    // backend 模式下的后端 API 前缀，如 http://localhost:8080/api
+    readonly VITE_API_BASE_URL?: string;
 }

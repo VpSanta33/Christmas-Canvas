@@ -1,19 +1,12 @@
-import { App, Button, Form, Input, Modal, Progress, Select, Tabs } from "antd";
+import { App, Button, Form, Input, Modal, Progress, Tabs } from "antd";
 import { Cloud, Pencil, Plus, RefreshCw, Trash2, Wifi } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { ModelPicker } from "@/components/model-picker";
 import { ChannelEditorDrawer } from "@/components/layout/channel-editor-drawer";
-import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
+import { syncAppDataToBackend, syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
+import { isBackendMode } from "@/constant/runtime-config";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
-import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
 import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
-
-type ModelGroup = {
-    capability: ModelCapability;
-    modelKey: "imageModel" | "videoModel" | "textModel" | "audioModel";
-    defaultLabel: string;
-};
 
 type WebdavDomainProgress = {
     label: string;
@@ -22,13 +15,6 @@ type WebdavDomainProgress = {
     total?: number;
     status?: "active" | "success" | "exception";
 };
-
-const modelGroups: ModelGroup[] = [
-    { capability: "image", modelKey: "imageModel", defaultLabel: "默认生图模型" },
-    { capability: "video", modelKey: "videoModel", defaultLabel: "默认视频模型" },
-    { capability: "text", modelKey: "textModel", defaultLabel: "默认文本模型" },
-    { capability: "audio", modelKey: "audioModel", defaultLabel: "默认音频模型" },
-];
 
 const webdavDomainKeys: AppSyncDomainKey[] = ["canvas", "assets", "image-workbench", "video-workbench"];
 const webdavDomainLabels: Record<AppSyncDomainKey, string> = {
@@ -150,6 +136,22 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         }
     };
 
+    const syncBackend = async () => {
+        setSyncingWebdav(true);
+        setWebdavDomainProgress(createWebdavDomainProgress());
+        setWebdavSyncStatus("准备同步");
+        try {
+            const result = await syncAppDataToBackend(updateWebdavProgress);
+            updateWebdavConfig("lastSyncedAt", result.syncedAt);
+            message.success(`云端同步完成：${result.projects} 个画布，${result.assets} 个资产`);
+        } catch (error) {
+            setWebdavSyncStatus(error instanceof Error ? error.message : "云端同步失败");
+            message.error(error instanceof Error ? error.message : "云端同步失败");
+        } finally {
+            setSyncingWebdav(false);
+        }
+    };
+
     return (
         <>
             <Tabs
@@ -189,58 +191,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         ),
                     },
                     {
-                        key: "preferences",
-                        label: "偏好设置",
-                        children: (
-                            <Form layout="vertical" requiredMark={false}>
-                                <div className="mb-2 text-sm font-semibold">默认模型</div>
-                                <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                                    {modelGroups.map((group) => (
-                                        <Form.Item key={group.modelKey} label={group.defaultLabel} className="mb-0">
-                                            <ModelPicker config={config} value={config[group.modelKey]} onChange={(model) => updateConfig(group.modelKey, model)} capability={group.capability} fullWidth />
-                                        </Form.Item>
-                                    ))}
-                                </div>
-                                <div className="mb-2 text-sm font-semibold">生成偏好</div>
-                                <div className="grid gap-4 md:grid-cols-4">
-                                    <Form.Item label="画布默认生图张数" extra="新建画布生图和配置节点默认使用，单个节点仍可单独覆盖。" className="mb-4">
-                                        <Input
-                                            type="number"
-                                            min={1}
-                                            max={15}
-                                            value={config.canvasImageCount}
-                                            onChange={(event) => updateConfig("canvasImageCount", event.target.value)}
-                                            onBlur={(event) => updateConfig("canvasImageCount", normalizeImageCount(event.target.value))}
-                                        />
-                                    </Form.Item>
-                                    <Form.Item label="默认音频声音" className="mb-4">
-                                        <Select value={config.audioVoice} options={audioVoiceOptions} onChange={(value) => updateConfig("audioVoice", value)} />
-                                    </Form.Item>
-                                    <Form.Item label="默认音频格式" className="mb-4">
-                                        <Select value={config.audioFormat} options={audioFormatOptions} onChange={(value) => updateConfig("audioFormat", value)} />
-                                    </Form.Item>
-                                    <Form.Item label="默认音频语速" className="mb-4">
-                                        <Input
-                                            type="number"
-                                            min={0.25}
-                                            max={4}
-                                            step={0.05}
-                                            value={config.audioSpeed}
-                                            onChange={(event) => updateConfig("audioSpeed", event.target.value)}
-                                            onBlur={(event) => updateConfig("audioSpeed", normalizeAudioSpeedValue(event.target.value))}
-                                        />
-                                    </Form.Item>
-                                </div>
-                                <Form.Item label="默认音频指令" className="mb-4">
-                                    <Input.TextArea rows={2} value={config.audioInstructions} placeholder="例如：自然、温暖、适合旁白。" onChange={(event) => updateConfig("audioInstructions", event.target.value)} />
-                                </Form.Item>
-                                <Form.Item label="系统提示词" className="mb-0">
-                                    <Input.TextArea rows={4} value={config.systemPrompt} placeholder="例如：你是一位擅长电影感写实摄影的视觉导演。" onChange={(event) => updateConfig("systemPrompt", event.target.value)} />
-                                </Form.Item>
-                            </Form>
-                        ),
-                    },
-                    {
                         key: "webdav",
                         label: "WebDAV",
                         children: (
@@ -277,6 +227,11 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         <Button type="primary" icon={<RefreshCw className="size-4" />} disabled={!webdavReady || testingWebdav} loading={syncingWebdav} onClick={() => void syncWebdav()}>
                                             {syncingWebdav ? "同步中" : "立即同步"}
                                         </Button>
+                                        {isBackendMode() ? (
+                                            <Button icon={<Cloud className="size-4" />} loading={syncingWebdav} onClick={() => void syncBackend()}>
+                                                云端同步
+                                            </Button>
+                                        ) : null}
                                         {webdavSyncStatus ? <span className="text-xs text-stone-500">{webdavSyncStatus}</span> : null}
                                     </div>
                                     {syncingWebdav || webdavSyncStatus ? <WebdavProgressGrid progress={webdavDomainProgress} /> : null}
@@ -344,10 +299,6 @@ function pickDefaultModel(config: AiConfig, capability: ModelCapability, current
     const options = selectableModelsByCapability(config, capability);
     const normalized = normalizeModelOptionValue(current, config.channels);
     return options.includes(normalized) ? normalized : options[0] || "";
-}
-
-function normalizeImageCount(value: string) {
-    return String(Math.max(1, Math.min(15, Math.floor(Math.abs(Number(value)) || 3))));
 }
 
 function apiFormatLabel(apiFormat: ApiCallFormat) {

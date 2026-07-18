@@ -1,5 +1,6 @@
 import localforage from "localforage";
 
+import { httpClient } from "@/services/http-client";
 import { getMediaBlob, resolveMediaUrl, setMediaBlob } from "@/services/file-storage";
 import { getImageBlob, resolveImageUrl, setImageBlob } from "@/services/image-storage";
 import { downloadWebdavFile, uploadWebdavFile, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
@@ -389,4 +390,79 @@ function formatBytes(bytes: number) {
     if (bytes < 1024) return `${bytes}B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+// ── backend 模式：结构化数据入库 ────────────────────────────────────────────
+// 走 REST 同步画布项目与资产的 JSON（媒体二进制由 /files 单独处理，见 file-storage）。
+// 采用「本地先合并、整批 PUT 覆盖」：先拉远端与本地按 updatedAt 合并，写回本地 store，
+// 再把合并结果整批推回后端，因此离线可用能力不受影响。
+
+type BackendProject = { id: string; title: string; data: CanvasProject };
+type BackendAsset = { id: string; kind: string; title: string; data: Asset };
+
+export type BackendSyncResult = {
+    syncedAt: string;
+    mergedRemote: boolean;
+    projects: number;
+    assets: number;
+};
+
+export async function syncAppDataToBackend(onProgress?: AppSyncProgress): Promise<BackendSyncResult> {
+    emitProgress(onProgress, { stage: "等待本地数据加载" });
+    await Promise.all([waitForHydration(useCanvasStore), waitForHydration(useAssetStore)]);
+
+    let mergedRemote = false;
+
+    // 画布项目
+    emitProgress(onProgress, { domain: "canvas", label: "画布", stage: "拉取远端项目", status: "active" });
+    const localProjects = useCanvasStore.getState().projects;
+    const remoteProjects = await fetchBackendProjects();
+    const mergedProjects = remoteProjects ? mergeById(localProjects, remoteProjects, "updatedAt") : localProjects;
+    if (remoteProjects) {
+        mergedRemote = true;
+        useCanvasStore.getState().replaceProjects(mergedProjects);
+    }
+    emitProgress(onProgress, { domain: "canvas", label: "画布", stage: "推送项目", status: "active" });
+    await httpClient.put("/projects", { projects: mergedProjects.map((p): BackendProject => ({ id: p.id, title: p.title, data: p })) });
+    emitProgress(onProgress, { domain: "canvas", label: "画布", stage: "完成", current: 1, total: 1, status: "success" });
+
+    // 资产
+    emitProgress(onProgress, { domain: "assets", label: "我的资产", stage: "拉取远端资产", status: "active" });
+    const localAssets = useAssetStore.getState().assets;
+    const remoteAssets = await fetchBackendAssets();
+    const mergedAssets = remoteAssets ? mergeById(localAssets, remoteAssets, "updatedAt") : localAssets;
+    if (remoteAssets) {
+        mergedRemote = true;
+        useAssetStore.getState().replaceAssets(await Promise.all(mergedAssets.map(hydrateAsset)));
+    }
+    emitProgress(onProgress, { domain: "assets", label: "我的资产", stage: "推送资产", status: "active" });
+    await httpClient.put("/assets", { assets: mergedAssets.map((a): BackendAsset => ({ id: a.id, kind: a.kind, title: a.title, data: a })) });
+    emitProgress(onProgress, { domain: "assets", label: "我的资产", stage: "完成", current: 1, total: 1, status: "success" });
+
+    const result: BackendSyncResult = {
+        syncedAt: new Date().toISOString(),
+        mergedRemote,
+        projects: mergedProjects.length,
+        assets: mergedAssets.length,
+    };
+    emitProgress(onProgress, { stage: "同步完成", status: "success" });
+    return result;
+}
+
+async function fetchBackendProjects(): Promise<CanvasProject[] | null> {
+    try {
+        const { data } = await httpClient.get<{ projects: CanvasProject[] }>("/projects");
+        return Array.isArray(data.projects) ? data.projects : [];
+    } catch {
+        return null;
+    }
+}
+
+async function fetchBackendAssets(): Promise<Asset[] | null> {
+    try {
+        const { data } = await httpClient.get<{ assets: Asset[] }>("/assets");
+        return Array.isArray(data.assets) ? data.assets : [];
+    } catch {
+        return null;
+    }
 }

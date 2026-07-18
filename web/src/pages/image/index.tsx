@@ -5,6 +5,7 @@ import localforage from "localforage";
 import { saveAs } from "file-saver";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
+import { GenerationCostHint } from "@/components/generation-cost-hint";
 import { ModelPicker } from "@/components/model-picker";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
@@ -16,6 +17,7 @@ import { nanoid } from "nanoid";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { notifyGenerationHistoryChanged } from "@/services/generation-history";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import type { ReferenceImage } from "@/types/image";
@@ -29,6 +31,8 @@ type GeneratedImage = {
     height: number;
     bytes: number;
     mimeType?: string;
+    storageStatus?: "stored" | "pending";
+    storageError?: string;
 };
 
 type GenerationResult = {
@@ -37,6 +41,10 @@ type GenerationResult = {
     image?: GeneratedImage;
     error?: string;
 };
+
+// 单条日志的运行状态。"生成中"用于持久化未完成的批次，刷新后可据此恢复现场；
+// 旧数据没有该字段时按已完成处理，兼容历史记录。
+type LogStatus = "生成中" | "成功" | "失败";
 
 type GenerationLog = {
     id: string;
@@ -53,7 +61,7 @@ type GenerationLog = {
     imageCount: number;
     size: string;
     quality: string;
-    status: "成功" | "失败";
+    status: LogStatus;
     images: GeneratedImage[];
     thumbnails: string[];
 };
@@ -63,6 +71,9 @@ type GenerationLogConfig = Pick<AiConfig, "model" | "imageModel" | "quality" | "
 type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
 
 const LOG_STORE_KEY = "infinite-canvas:image_generation_logs";
+// 「生成中」日志的存活上限：超过该时长仍未落定即判为失败。生图是同步请求、无服务端任务，
+// 刷新后无法续接，但为避免误杀刚下发的任务，仅在超时后才转失败。
+const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
 const RESULT_ACTION_BUTTON_CLASS = "min-w-0 px-1.5 [&_.ant-btn-icon]:shrink-0 [&>span:last-child]:min-w-0 [&>span:last-child]:truncate";
 const logStore = localforage.createInstance({ name: "infinite-canvas", storeName: "image_generation_logs" });
 
@@ -93,6 +104,8 @@ export default function ImagePage() {
     const imageCommand = useWorkbenchAgentStore((state) => state.imageCommand);
     const clearImageCommand = useWorkbenchAgentStore((state) => state.clearImageCommand);
     const processedCommandRef = useRef(0);
+    // 「生成中」日志的超时定时器，卸载时统一清除，避免离开页面后仍回写。
+    const timeoutTimersRef = useRef<number[]>([]);
 
     const model = effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
@@ -105,10 +118,12 @@ export default function ImagePage() {
     }, [running, startedAt]);
 
     useEffect(() => {
-        void refreshLogs();
+        void resumeInterruptedLogs().then(() => refreshLogs());
+        const timers = timeoutTimersRef.current;
+        return () => timers.forEach((timer) => window.clearTimeout(timer));
     }, []);
 
-    const addReferences = async (files?: FileList | null) => {
+    const addReferences = async (files?: FileList | File[] | null) => {
         const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
         const nextReferences = await Promise.all(
             imageFiles.map(async (file) => {
@@ -162,6 +177,15 @@ export default function ImagePage() {
         const batchStartedAt = performance.now();
         setStartedAt(batchStartedAt);
 
+        // 提交即落盘一条「生成中」日志：即便此刻刷新页面，记录也不会丢，
+        // 刷新后 resumeInterruptedLogs 会把它标记为失败并暴露重试入口（不自动重发、不重复扣费）。
+        const logId = nanoid();
+        const logCreatedAt = Date.now();
+        const batchConfig = { ...snapshot.config, count: String(generationCount) };
+        void saveLog(
+            buildLog({ id: logId, createdAt: logCreatedAt, prompt: text, model, config: batchConfig, references: snapshot.references, durationMs: 0, successCount: 0, failCount: 0, status: "生成中", images: [] }),
+        );
+
         const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot));
 
         const result = await Promise.allSettled(tasks);
@@ -174,14 +198,18 @@ export default function ImagePage() {
             const logImages = await Promise.all(
                 successImages.map(async (image) => {
                     const stored = await uploadImage(image.dataUrl);
-                    return { ...image, dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
+                    return { ...image, dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType, storageStatus: stored.storageStatus, storageError: stored.storageError };
                 }),
             );
+            const storedByID = new Map(logImages.map((image) => [image.id, image]));
+            setResults((current) => current.map((item) => item.image && storedByID.has(item.image.id) ? { ...item, image: storedByID.get(item.image.id) } : item));
             saveLog(
                 buildLog({
+                    id: logId,
+                    createdAt: logCreatedAt,
                     prompt: text,
                     model,
-                    config: { ...snapshot.config, count: String(generationCount) },
+                    config: batchConfig,
                     references: snapshot.references,
                     durationMs: performance.now() - batchStartedAt,
                     successCount,
@@ -190,7 +218,10 @@ export default function ImagePage() {
                     images: logImages,
                 }),
             );
-            successCount ? message.success("图片已生成") : message.error(failed?.reason instanceof Error ? failed.reason.message : "生成失败");
+            const pendingCount = logImages.filter((image) => image.storageStatus === "pending").length;
+            if (pendingCount) message.warning(`${pendingCount} 张图片已生成，但 OSS 保存失败，已加入右下角传输队列`);
+            else if (successCount) message.success("图片已生成并保存到 OSS");
+            else message.error(failed?.reason instanceof Error ? failed.reason.message : "生成失败");
         } finally {
             setRunning(false);
         }
@@ -202,6 +233,7 @@ export default function ImagePage() {
         processedCommandRef.current = imageCommand.nonce;
         clearImageCommand();
         if (typeof imageCommand.prompt === "string") setPrompt(imageCommand.prompt);
+        if (imageCommand.attachments?.length) void addReferences(imageCommand.attachments);
         if (imageCommand.run && !running) setAutoRunToken((value) => value + 1);
     }, [imageCommand, clearImageCommand, running]);
 
@@ -259,7 +291,10 @@ export default function ImagePage() {
 
     const deleteSelectedLogs = () => {
         const imageKeys = logs.filter((log) => selectedLogIds.includes(log.id)).flatMap((log) => log.images.map((image) => image.storageKey).filter((key): key is string => Boolean(key)));
-        void Promise.all([deleteStoredImages(imageKeys), ...selectedLogIds.map((id) => logStore.removeItem(id))]).then(refreshLogs);
+        void Promise.all([deleteStoredImages(imageKeys), ...selectedLogIds.map((id) => logStore.removeItem(id))]).then(() => {
+            notifyGenerationHistoryChanged();
+            return refreshLogs();
+        });
         if (previewLog && selectedLogIds.includes(previewLog.id)) {
             setPreviewLog(null);
             setResults([]);
@@ -269,10 +304,42 @@ export default function ImagePage() {
     };
 
     const saveLog = (log: GenerationLog) => {
-        void logStore.setItem(log.id, serializeLog(log)).then(refreshLogs);
+        void logStore.setItem(log.id, serializeLog(log)).then(() => {
+            notifyGenerationHistoryChanged();
+            return refreshLogs();
+        });
     };
 
     const refreshLogs = async () => setLogs(await readStoredLogs());
+
+    // 把一条日志落定为失败。务必以「持久化里的当前状态」为准而非传入的旧快照：
+    // 超时定时器捕获的是挂载那一刻的 log，若期间原批次已在别处写回「成功」，这里必须放弃，
+    // 否则会用陈旧快照（images 为空）把成功记录翻回失败并清空成品图。
+    const failLog = async (log: GenerationLog) => {
+        const current = await logStore.getItem<Partial<GenerationLog>>(log.id);
+        if (!current) return; // 已被删除
+        const normalized = await normalizeLog(current);
+        if (normalized.status !== "生成中") return; // 期间已落定，放弃改写
+        await logStore.setItem(log.id, serializeLog({ ...normalized, status: "失败", failCount: Math.max(1, Number(normalized.config.count) || 1) }));
+        await refreshLogs();
+    };
+
+    // 挂载时处理残留的「生成中」日志：生图是同步请求、没有服务端任务，页面一旦刷新原请求即中断且不可续接。
+    // 但为避免误杀刚下发的任务，只有存活超过 GENERATION_TIMEOUT_MS 的才立即判失败；未超时的保留「生成中」，
+    // 并挂一个定时器在到点后自动转失败。失败态会在生成记录里暴露「重试」入口——重试由用户手动点击，不自动扣费。
+    const resumeInterruptedLogs = async () => {
+        const stored = await readStoredLogs();
+        for (const log of stored) {
+            if (log.status !== "生成中") continue;
+            const age = Date.now() - log.createdAt;
+            if (age >= GENERATION_TIMEOUT_MS) {
+                await failLog(log);
+            } else {
+                const timer = window.setTimeout(() => void failLog(log), GENERATION_TIMEOUT_MS - age);
+                timeoutTimersRef.current.push(timer);
+            }
+        }
+    };
 
     const previewGenerationLog = async (log: GenerationLog) => {
         setPreviewLog(log);
@@ -283,7 +350,13 @@ export default function ImagePage() {
         if (log.config.quality) updateConfig("quality", log.config.quality);
         if (log.config.size) updateConfig("size", log.config.size);
         if (log.config.count) updateConfig("count", log.config.count);
-        setResults(log.images.map((image) => ({ id: image.id, status: "success", image })));
+        // 失败且没有任何成品图时（含刷新中断转失败的批次），在结果区放一张失败卡，
+        // 让用户可直接点「重试」——输入已回填，重试即以当前输入重新发起生成（手动、单次扣费）。
+        if (log.status === "失败" && !log.images.length) {
+            setResults([{ id: log.id, status: "failed", error: "生成已中断，可点击重试重新生成" }]);
+        } else {
+            setResults(log.images.map((image) => ({ id: image.id, status: "success", image })));
+        }
     };
 
     const buildRequestSnapshot = () => {
@@ -300,14 +373,14 @@ export default function ImagePage() {
         return { text, config: { ...effectiveConfig, model, count: "1" }, references: [...references] };
     };
 
-    const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
+    const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }): Promise<GeneratedImage> => {
         const itemStartedAt = performance.now();
         try {
             const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references) : await requestGeneration(snapshot.config, snapshot.text);
             const image = result[0];
             if (!image) throw new Error("接口没有返回图片");
             const meta = await readImageMeta(image.dataUrl);
-            const nextImage = { id: image.id, dataUrl: image.dataUrl, durationMs: performance.now() - itemStartedAt, width: meta.width, height: meta.height, bytes: getDataUrlByteSize(image.dataUrl) };
+            const nextImage = { id: image.id, dataUrl: image.dataUrl, durationMs: performance.now() - itemStartedAt, width: meta.width, height: meta.height, bytes: getDataUrlByteSize(image.dataUrl), storageStatus: "pending" as const };
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             return nextImage;
         } catch (error) {
@@ -325,8 +398,8 @@ export default function ImagePage() {
         try {
             const image = await runGenerationSlot(index, snapshot);
             const stored = await uploadImage(image.dataUrl);
-            const logImage = { ...image, dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
-            setResults((value) => updateResultAt(value, index, { image: { ...image, dataUrl: stored.url, storageKey: stored.storageKey } }));
+            const logImage = { ...image, dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType, storageStatus: stored.storageStatus, storageError: stored.storageError };
+            setResults((value) => updateResultAt(value, index, { image: logImage }));
             saveLog(
                 buildLog({
                     prompt: snapshot.text,
@@ -340,7 +413,7 @@ export default function ImagePage() {
                     images: [logImage],
                 }),
             );
-            message.success("重试成功");
+            stored.storageStatus === "stored" ? message.success("重试成功并保存到 OSS") : message.warning("图片已生成，但 OSS 保存失败，已加入传输队列");
         } catch {
             // runGenerationSlot 已经把结果状态更新为 failed
         }
@@ -449,6 +522,7 @@ export default function ImagePage() {
                         </div>
 
                         <div className="mt-auto pt-6">
+                            <GenerationCostHint config={effectiveConfig} model={model} requests={generationCount} />
                             <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
                                 开始生成
                             </Button>
@@ -550,7 +624,12 @@ function ResultImageCard({
 }) {
     return (
         <div className="overflow-hidden rounded-lg border border-stone-200 bg-background dark:border-stone-800">
-            <Image src={image.dataUrl} alt={`生成结果 ${index + 1}`} className="aspect-square object-cover" />
+            <div className="relative">
+                <Image src={image.dataUrl} alt={`生成结果 ${index + 1}`} className="aspect-square object-cover" />
+                <Tag className="!absolute !right-2 !top-2 !m-0" color={image.storageStatus === "pending" ? "warning" : "success"}>
+                    {image.storageStatus === "pending" ? "等待保存" : "OSS 已保存"}
+                </Tag>
+            </div>
             <div className="space-y-2 border-t border-stone-200 px-3 py-2.5 dark:border-stone-800">
                 <div className="flex min-w-0 gap-x-2 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
                     <span>
@@ -702,14 +781,22 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                 </div>
                 <div className="grid justify-items-end gap-2">
                     <div className="flex gap-1">
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="blue">
-                            成功 {log.successCount ?? log.imageCount}
-                        </Tag>
-                        {log.failCount ? (
-                            <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="red">
-                                失败 {log.failCount}
+                        {log.status === "生成中" ? (
+                            <Tag className="m-0 flex h-6 items-center gap-1 rounded-md px-1.5 text-xs leading-none" color="processing" icon={<LoaderCircle className="size-3 animate-spin" />}>
+                                生成中
                             </Tag>
-                        ) : null}
+                        ) : (
+                            <>
+                                <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="blue">
+                                    成功 {log.successCount ?? log.imageCount}
+                                </Tag>
+                                {log.failCount ? (
+                                    <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="red">
+                                        失败 {log.failCount}
+                                    </Tag>
+                                ) : null}
+                            </>
+                        )}
                     </div>
                     <div className="flex flex-wrap justify-end gap-1">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.imageCount} 张</Tag>
@@ -813,6 +900,8 @@ function ReferenceOrderButtons({ index, total, onMove }: { index: number; total:
 }
 
 function buildLog({
+    id,
+    createdAt,
     prompt,
     model,
     config,
@@ -823,6 +912,8 @@ function buildLog({
     status,
     images,
 }: {
+    id?: string;
+    createdAt?: number;
     prompt: string;
     model: string;
     config: GenerationLogConfig;
@@ -841,8 +932,8 @@ function buildLog({
         count: config.count,
     };
     return {
-        id: nanoid(),
-        createdAt: Date.now(),
+        id: id || nanoid(),
+        createdAt: createdAt || Date.now(),
         title: prompt.slice(0, 12) || "未命名",
         prompt,
         time: new Date().toLocaleString("zh-CN", { hour12: false }),

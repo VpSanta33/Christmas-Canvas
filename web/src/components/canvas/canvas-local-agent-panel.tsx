@@ -952,7 +952,9 @@ async function postState(endpoint: string, token: string, clientId: string, snap
             headers: { "content-type": "application/json" },
             body: JSON.stringify(snapshot ? { ...snapshot, hasCanvas: true } : { hasCanvas: false }),
         });
-    } catch {}
+    } catch {
+        // 状态上报为尽力而为（fire-and-forget），失败不阻断画布交互
+    }
 }
 
 async function postToolResult(endpoint: string, token: string, clientId: string, body: { requestId: string; result?: unknown; error?: string }) {

@@ -5,7 +5,7 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildSeedancePromptText, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceVideoReferenceError, SEEDANCE_REFERENCE_LIMITS } from "@/lib/seedance-video";
-import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
+import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -126,7 +126,7 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
         try {
             return await uploadMediaFile(result.url, "video");
         } catch {
-            return { url: result.url, storageKey: "", bytes: 0, mimeType: result.mimeType || "video/mp4" };
+            return { url: result.url, storageKey: "", bytes: 0, mimeType: result.mimeType || "video/mp4", storageStatus: "pending", storageError: "视频已生成，但浏览器无法读取上游文件并转存到 OSS" };
         }
     }
     throw new Error("视频接口没有返回可播放的视频");
@@ -296,7 +296,7 @@ function assertVideoConfig(config: AiConfig, model: string) {
 
 function normalizeVideoSeconds(value: string) {
     const seconds = Math.floor(Number(value) || 6);
-    return String(Math.max(1, Math.min(20, seconds)));
+    return String(Math.max(VIDEO_SECONDS_MIN, Math.min(VIDEO_SECONDS_MAX, seconds)));
 }
 
 function normalizeVideoSize(value: string) {

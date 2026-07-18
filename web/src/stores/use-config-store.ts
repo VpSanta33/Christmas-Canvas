@@ -3,13 +3,36 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
+import { API_BASE_URL, isBackendMode } from "@/constant/runtime-config";
+import { getAuthToken } from "@/stores/use-auth-store";
+
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
+
+export type GenerationPricing = {
+    imageQuality: Record<string, number>;
+    videoPrices: Record<string, Record<string, number>>;
+};
 
 export type ChannelModel = {
     name: string;
     capability: ModelCapability;
+    cost?: number;
+    enabled?: boolean;
+    sortOrder?: number;
     script?: string;
+    generationPricing?: GenerationPricing;
+};
+
+export type PlatformModelDefaults = Record<ModelCapability, string>;
+
+export const VIDEO_SECONDS_MIN = 1;
+export const VIDEO_SECONDS_MAX = 15;
+export const VIDEO_SECOND_KEYS = Array.from({ length: VIDEO_SECONDS_MAX - VIDEO_SECONDS_MIN + 1 }, (_, index) => String(index + VIDEO_SECONDS_MIN));
+
+export const defaultGenerationPricing: GenerationPricing = {
+    imageQuality: { auto: 0, low: 0, medium: 0, high: 0 },
+    videoPrices: Object.fromEntries(["480", "720", "1080"].map((quality) => [quality, Object.fromEntries(VIDEO_SECOND_KEYS.map((seconds) => [seconds, 0]))])),
 };
 
 export type ModelChannel = {
@@ -47,6 +70,7 @@ export type AiConfig = {
     background: string;
     count: string;
     canvasImageCount: string;
+    generationPricing: GenerationPricing;
 };
 
 export type WebdavSyncConfig = {
@@ -103,6 +127,7 @@ export const defaultConfig: AiConfig = {
     background: "",
     count: "1",
     canvasImageCount: "3",
+    generationPricing: defaultGenerationPricing,
 };
 
 export const defaultWebdavSyncConfig: WebdavSyncConfig = {
@@ -116,10 +141,12 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
 type ConfigStore = {
     config: AiConfig;
     webdav: WebdavSyncConfig;
+    backendCatalogLoaded: boolean;
     isConfigOpen: boolean;
     configTab: ConfigTabKey;
     shouldPromptContinue: boolean;
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
+    replaceBackendChannels: (channels: ModelChannel[], defaults?: Partial<PlatformModelDefaults>, pricing?: Partial<GenerationPricing>) => void;
     updateWebdavConfig: <K extends keyof WebdavSyncConfig>(key: K, value: WebdavSyncConfig[K]) => void;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
     openConfigDialog: (shouldPromptContinue?: boolean, tab?: ConfigTabKey) => void;
@@ -144,7 +171,7 @@ function findChannelModel(config: AiConfig, value: string): { channel: ModelChan
     const decoded = decodeChannelModel(value);
     const name = decoded?.model || value;
     const channel = decoded ? config.channels.find((item) => item.id === decoded.channelId) : config.channels.find((item) => item.models.some((model) => model.name === name));
-    const model = channel?.models.find((item) => item.name === name);
+    const model = channel?.models.find((item) => item.enabled !== false && item.name === name);
     return channel && model ? { channel, model } : null;
 }
 
@@ -159,7 +186,7 @@ export function modelMatchesCapability(config: AiConfig, value: string, capabili
 
 export function selectableModelsByCapability(config: AiConfig, capability?: ModelCapability) {
     if (!capability) return config.models;
-    return config.channels.flatMap((channel) => channel.models.filter((model) => model.capability === capability).map((model) => encodeChannelModel(channel.id, model.name)));
+    return config.channels.flatMap((channel) => channel.models.filter((model) => model.enabled !== false && model.capability === capability).map((model) => encodeChannelModel(channel.id, model.name)));
 }
 
 /** The user script (if any) attached to a model; empty string means use the system default call. */
@@ -169,14 +196,16 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const channel = resolveModelChannel(config, model);
+    if (isBackendMode()) return Boolean(model.trim() && channel.id && getAuthToken());
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
 export const useConfigStore = create<ConfigStore>()(
     persist(
-        (set, get) => ({
+        (set) => ({
             config: defaultConfig,
             webdav: defaultWebdavSyncConfig,
+            backendCatalogLoaded: false,
             isConfigOpen: false,
             configTab: "channels",
             shouldPromptContinue: false,
@@ -187,6 +216,38 @@ export const useConfigStore = create<ConfigStore>()(
                         [key]: value,
                     },
                 })),
+            replaceBackendChannels: (channels, defaults = {}, pricing) =>
+                set((state) => {
+                    const models = modelOptionsFromChannels(channels);
+                    const candidate: AiConfig = { ...state.config, channelMode: "remote", channels, models };
+                    const generationPricing = normalizeGenerationPricing(pricing);
+                    const select = (value: string, capability: ModelCapability) => {
+                        const options = selectableModelsByCapability(candidate, capability);
+                        const current = normalizeModelOptionValue(value, channels);
+                        const platformDefault = normalizeModelOptionValue(defaults[capability], channels);
+                        return (options.includes(current) ? current : "") || (options.includes(platformDefault) ? platformDefault : "") || options[0] || "";
+                    };
+                    const genericDefault = normalizeModelOptionValue(defaults.text || defaults.image, channels);
+                    const imageModel = select(state.config.imageModel, "image");
+                    const videoModel = select(state.config.videoModel, "video");
+                    const textModel = select(state.config.textModel, "text");
+                    const audioModel = select(state.config.audioModel, "audio");
+                    const videoSelection = configuredVideoSelection(generationPricingForModel({ ...candidate, generationPricing }, videoModel), state.config.vquality, state.config.videoSeconds);
+                    return {
+                        backendCatalogLoaded: true,
+                        config: {
+                            ...candidate,
+                            model: normalizeModelOptionValue(state.config.model, channels) || genericDefault || models[0] || "",
+                            imageModel,
+                            videoModel,
+                            textModel,
+                            audioModel,
+                            generationPricing,
+                            vquality: videoSelection.quality,
+                            videoSeconds: videoSelection.seconds,
+                        },
+                    };
+                }),
             updateWebdavConfig: (key, value) =>
                 set((state) => ({
                     webdav: {
@@ -195,7 +256,11 @@ export const useConfigStore = create<ConfigStore>()(
                     },
                 })),
             isAiConfigReady: (config, model) => isAiConfigReady(config, model),
-            openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, configTab }),
+            openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => {
+                // 平台模式的渠道、密钥和模型价格只能由管理员后台维护。
+                if (isBackendMode()) return;
+                set({ isConfigOpen: true, shouldPromptContinue, configTab });
+            },
             setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
             clearPromptContinue: () => set({ shouldPromptContinue: false }),
         }),
@@ -210,6 +275,13 @@ export const useConfigStore = create<ConfigStore>()(
                 if (!Array.isArray(persistedConfig.channels)) config.channels = [];
                 const channels = normalizeChannels(config);
                 const models = modelOptionsFromChannels(channels);
+                const generationPricing = normalizeGenerationPricing(config.generationPricing);
+                const imageModel = normalizeModelOptionValue(config.imageModel || config.model, channels);
+                const videoModel = normalizeModelOptionValue(config.videoModel, channels);
+                const textModel = normalizeModelOptionValue(config.textModel || config.model, channels);
+                const audioModel = normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels);
+                const normalizedConfig = { ...config, channels, generationPricing };
+                const videoSelection = configuredVideoSelection(generationPricingForModel(normalizedConfig, videoModel), config.vquality, config.videoSeconds);
                 return {
                     ...current,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
@@ -219,19 +291,20 @@ export const useConfigStore = create<ConfigStore>()(
                         apiFormat: normalizeApiFormat(config.apiFormat),
                         channels,
                         models,
-                        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
-                        videoModel: normalizeModelOptionValue(config.videoModel, channels),
-                        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
-                        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
+                        imageModel,
+                        videoModel,
+                        textModel,
+                        audioModel,
                         audioVoice: config.audioVoice || defaultConfig.audioVoice,
                         audioFormat: config.audioFormat || defaultConfig.audioFormat,
                         audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
                         audioInstructions: config.audioInstructions || "",
-                        videoSeconds: config.videoSeconds || "6",
-                        vquality: config.vquality || "720",
+                        videoSeconds: videoSelection.seconds,
+                        vquality: videoSelection.quality,
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
                         canvasImageCount: config.canvasImageCount || "3",
+                        generationPricing,
                     },
                 };
             },
@@ -241,7 +314,24 @@ export const useConfigStore = create<ConfigStore>()(
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
-    return useMemo(() => ({ ...config, channelMode: "local" as const }), [config]);
+    const backendCatalogLoaded = useConfigStore((state) => state.backendCatalogLoaded);
+    const backendMode = isBackendMode();
+    return useMemo(() => {
+        if (!backendMode) return { ...config, channelMode: "local" as const };
+        if (backendCatalogLoaded) return { ...config, channelMode: "remote" as const };
+        // 后台目录返回前不展示浏览器里残留的本地渠道，避免平台模型配置被绕过。
+        return {
+            ...config,
+            channelMode: "remote" as const,
+            channels: [],
+            models: [],
+            model: "",
+            imageModel: "",
+            videoModel: "",
+            textModel: "",
+            audioModel: "",
+        };
+    }, [backendCatalogLoaded, backendMode, config]);
 }
 
 /** Normalize a mixed list of raw model names or model objects into deduped ChannelModel entries. */
@@ -253,10 +343,64 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         if (!name || seen.has(name)) continue;
         seen.add(name);
         const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
+        const cost = typeof item === "string" ? 0 : Math.max(0, Math.floor(Number(item.cost) || 0));
+        const enabled = typeof item === "string" ? true : item.enabled !== false;
+        const sortOrder = typeof item === "string" ? result.length : Math.max(0, Math.floor(Number(item.sortOrder) || 0));
         const script = typeof item === "string" ? undefined : item.script?.trim() || undefined;
-        result.push({ name, capability, script });
+        const generationPricing = typeof item === "string" || !item.generationPricing ? undefined : normalizeGenerationPricing(item.generationPricing);
+        result.push({ name, capability, cost, enabled, sortOrder, script, generationPricing });
     }
     return result;
+}
+
+export function normalizeGenerationPricing(value?: Partial<GenerationPricing>): GenerationPricing {
+    if (!value) {
+        return {
+            imageQuality: { ...defaultGenerationPricing.imageQuality },
+            videoPrices: Object.fromEntries(Object.entries(defaultGenerationPricing.videoPrices).map(([quality, prices]) => [quality, { ...prices }])),
+        };
+    }
+    return {
+        imageQuality: normalizePointMap(value.imageQuality, defaultGenerationPricing.imageQuality),
+        videoPrices: normalizeVideoPrices(value.videoPrices, defaultGenerationPricing.videoPrices),
+    };
+}
+
+export function generationPricingForModel(config: AiConfig, value: string): GenerationPricing {
+    const pricing = findChannelModel(config, value)?.model.generationPricing;
+    return normalizeGenerationPricing(pricing ?? config.generationPricing);
+}
+
+function normalizePointMap(value: Record<string, number> | undefined, defaults: Record<string, number>) {
+    if (!value) return { ...defaults };
+    return Object.fromEntries(
+        Object.entries(value)
+            .filter(([key]) => key.trim())
+            .map(([key, points]) => [key.toLowerCase().trim().replace(/p$/, ""), Math.max(0, Math.min(1_000_000, Number.isFinite(Number(points)) ? Number(points) : 0))]),
+    );
+}
+
+function normalizeVideoPrices(value: Record<string, Record<string, number>> | undefined, defaults: Record<string, Record<string, number>>) {
+    const source = value ?? defaults;
+    return Object.fromEntries(
+        Object.entries(source).map(([quality, prices]) => {
+            const normalized = normalizePointMap(prices, {});
+            return [quality.toLowerCase().trim().replace(/p$/, ""), Object.fromEntries(VIDEO_SECOND_KEYS.map((seconds) => [seconds, normalized[seconds] ?? 0]))];
+        }),
+    );
+}
+
+function configuredVideoSelection(pricing: GenerationPricing, currentQuality: string, currentSeconds: string) {
+    const qualities = Object.keys(pricing.videoPrices).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+    const normalizedQuality = String(currentQuality || "")
+        .trim()
+        .toLowerCase()
+        .replace(/p$/, "");
+    const quality = qualities.includes(normalizedQuality) ? normalizedQuality : qualities[0] || normalizedQuality || "720";
+    const durations = Object.keys(pricing.videoPrices[quality] || {}).sort((a, b) => Number(a) - Number(b));
+    const normalizedSeconds = String(Math.max(VIDEO_SECONDS_MIN, Math.min(VIDEO_SECONDS_MAX, Math.floor(Number(currentSeconds) || 6))));
+    const seconds = durations.includes(normalizedSeconds) ? normalizedSeconds : durations[0] || normalizedSeconds;
+    return { quality, seconds };
 }
 
 export function createModelChannel(channel?: Partial<ModelChannel>): ModelChannel {
@@ -297,7 +441,7 @@ export function modelOptionLabel(config: AiConfig, value: string) {
 }
 
 export function modelOptionsFromChannels(channels: ModelChannel[]) {
-    return uniqueModelOptions(channels.flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name))));
+    return uniqueModelOptions(channels.flatMap((channel) => channel.models.filter((model) => model.enabled !== false).map((model) => encodeChannelModel(channel.id, model.name))));
 }
 
 export function normalizeModelOptionValue(value: string | undefined, channels: ModelChannel[]) {
@@ -306,21 +450,37 @@ export function normalizeModelOptionValue(value: string | undefined, channels: M
     const decoded = decodeChannelModel(model);
     if (decoded) {
         const channel = channels.find((item) => item.id === decoded.channelId);
-        return channel && channel.models.some((item) => item.name === decoded.model) ? model : "";
+        return channel && channel.models.some((item) => item.enabled !== false && item.name === decoded.model) ? model : "";
     }
-    const channel = channels.find((item) => item.models.some((entry) => entry.name === model)) || channels[0];
-    return channel && channel.models.some((item) => item.name === model) ? encodeChannelModel(channel.id, model) : model;
+    const channel = channels.find((item) => item.models.some((entry) => entry.enabled !== false && entry.name === model));
+    return channel ? encodeChannelModel(channel.id, model) : model;
 }
 
 export function resolveModelChannel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     const model = decoded?.model || value;
     const matched = decoded ? config.channels.find((channel) => channel.id === decoded.channelId) : config.channels.find((channel) => channel.models.some((item) => item.name === model));
-    return matched || config.channels[0] || createModelChannel({ id: "default", name: "默认渠道", baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
+    return (
+        matched ||
+        config.channels[0] ||
+        createModelChannel({ id: "default", name: "默认渠道", baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) })
+    );
 }
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
+    // backend 模式：不把第三方密钥交给浏览器。把 baseUrl 指向 /api/ai/:channelId 反向代理，
+    // 凭证换成用户 JWT（后端剥离后注入真正的渠道密钥）。apiFormat 保持不变，
+    // 因此各请求函数的 URL 拼装（/v1/... vs gemini path）与 body 完全无需改动。
+    if (isBackendMode()) {
+        return {
+            ...config,
+            model: modelOptionName(value || config.model),
+            baseUrl: `${API_BASE_URL}/ai/${channel.id}`,
+            apiKey: getAuthToken() || "",
+            apiFormat: channel.apiFormat,
+        };
+    }
     return {
         ...config,
         model: modelOptionName(value || config.model),

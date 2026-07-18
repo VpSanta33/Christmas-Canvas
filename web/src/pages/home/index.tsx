@@ -1,125 +1,150 @@
-import { ArrowRight } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
-import { App, Button, Image, Tag } from "antd";
+import { ArrowRight, Film, Heart, ImagePlus, Sparkles, Users, Video, Workflow } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Button, Empty, Skeleton } from "antd";
 import { useNavigate } from "react-router-dom";
 
-import { fetchPrompts, type Prompt } from "@/services/api/prompts";
-import { navigationTools } from "@/constant/navigation-tools";
-import { cn } from "@/lib/utils";
+import { isBackendMode } from "@/constant/runtime-config";
+import { fetchShowcaseEntries, type ContestEntry, type ContestStats } from "@/services/api/contest";
+import { ShowcaseWorkCard } from "./showcase-work-card";
 
-function Highlighter({ action, color, children }: { action: "highlight" | "underline"; color: string; children: ReactNode }) {
-    return (
-        <span className="relative inline-block px-1">
-            {action === "highlight" ? (
-                <span className="absolute inset-x-0 bottom-0 top-1 rounded-sm opacity-45" style={{ backgroundColor: color }} />
-            ) : (
-                <span className="absolute inset-x-0 bottom-0 h-1 rounded-full opacity-80" style={{ backgroundColor: color }} />
-            )}
-            <span className="relative font-medium text-stone-800 dark:text-stone-200">{children}</span>
-        </span>
-    );
-}
+const creationEntrances = [
+    { number: "01", title: "图片生成", description: "从文字与参考图快速构建视觉", icon: ImagePlus, path: "/image" },
+    { number: "02", title: "视频创作", description: "把画面延展成镜头、动作与叙事", icon: Video, path: "/video" },
+    { number: "03", title: "无限画布", description: "连接素材、想法与可复用工作流", icon: Workflow, path: "/canvas" },
+] as const;
 
-export default function IndexPage() {
-    const { message } = App.useApp();
+export default function HomePage() {
     const navigate = useNavigate();
-    const [primaryTool] = navigationTools;
-    const [promptShowcase, setPromptShowcase] = useState<Prompt[]>([]);
-    const [previewIndex, setPreviewIndex] = useState(0);
-    const [previewOpen, setPreviewOpen] = useState(false);
+    const backendMode = isBackendMode();
+    const [works, setWorks] = useState<ContestEntry[]>([]);
+    const [workStats, setWorkStats] = useState<ContestStats>({ entries: 0, creators: 0, likes: 0 });
+    const [worksLoading, setWorksLoading] = useState(backendMode);
 
     useEffect(() => {
-        void fetchPrompts({ pageSize: 12 })
-            .then((data) => setPromptShowcase(data.items))
-            .catch((error) => message.error(error instanceof Error ? error.message : "获取提示词失败"));
-    }, [message]);
+        if (!backendMode) {
+            return undefined;
+        }
+        let alive = true;
+        void fetchShowcaseEntries(9)
+            .then((result) => {
+                if (!alive) return;
+                setWorks(result.items);
+                setWorkStats(result.stats);
+            })
+            .catch(() => undefined)
+            .finally(() => alive && setWorksLoading(false));
+        return () => {
+            alive = false;
+        };
+    }, [backendMode]);
 
     return (
-        <main className="relative h-full overflow-y-auto bg-background bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-stone-950 dark:bg-[radial-gradient(rgba(245,245,244,.18)_1px,transparent_1px)] dark:text-stone-100">
-            <section className="relative mx-auto min-h-[calc(100vh-4rem)] max-w-7xl overflow-hidden px-6">
-                <div className="pointer-events-none absolute left-[15%] top-24 size-20 rounded-full border border-dashed border-stone-200 dark:border-stone-800" />
-                <div className="pointer-events-none absolute right-[23%] top-[48%] size-20 rounded-full border border-dashed border-stone-200 dark:border-stone-800" />
+        <main className="h-full overflow-y-auto bg-[#f6f6f3] text-stone-950 dark:bg-[#0d0d0c] dark:text-stone-100">
+            <section className="relative overflow-hidden border-b border-stone-200 bg-[#efefeb] dark:border-stone-800 dark:bg-[#11110f]">
+                <div className="pointer-events-none absolute -left-40 -top-28 size-[30rem] rounded-full bg-amber-300/15 blur-3xl dark:bg-amber-500/5" />
+                <div className="pointer-events-none absolute -right-32 -top-72 size-[42rem] rounded-full border border-stone-300/60 dark:border-white/5" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
+                <div className="relative mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16 lg:py-20">
+                    <div className="grid gap-12 lg:grid-cols-[minmax(0,1.18fr)_minmax(340px,0.82fr)] lg:items-end lg:gap-20">
+                        <div className="max-w-3xl">
+                            <div className="mb-4 inline-flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-amber-600 dark:text-amber-400">
+                                <Sparkles className="size-3.5" />
+                                ABOUT SANTA CANVAS
+                            </div>
+                            <h1 className="text-4xl font-semibold leading-[1.06] tracking-[-0.04em] sm:text-5xl lg:text-6xl">
+                                让一个想法，
+                                <span className="block">长成一件作品。</span>
+                            </h1>
+                            <p className="mt-6 max-w-2xl text-base leading-8 text-stone-500 dark:text-stone-400">圣诞画布把 AI 图片、视频和无限画布连接在一起。你可以从一次生成开始，把素材、思路与步骤沉淀为可复用的工作流，再把作品分享给社区。</p>
+                            <div className="mt-8 flex flex-wrap gap-3">
+                                <Button type="primary" size="large" icon={<ArrowRight className="size-4" />} iconPlacement="end" onClick={() => navigate("/canvas")}>
+                                    开始创作
+                                </Button>
+                                <Button size="large" onClick={() => document.getElementById("community-works")?.scrollIntoView({ behavior: "smooth" })}>
+                                    浏览用户作品
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="lg:pl-2">
+                            <div className="flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] text-stone-400">
+                                <span>THREE WAYS TO CREATE</span>
+                                <span>01 — 03</span>
+                            </div>
+                            <div className="mt-4 border-t border-stone-300 dark:border-stone-700">
+                                {creationEntrances.map(({ number, title, description, icon: Icon, path }) => (
+                                    <button
+                                        key={path}
+                                        type="button"
+                                        onClick={() => navigate(path)}
+                                        className="group grid w-full grid-cols-[2rem_1fr_auto] items-center gap-3 border-b border-stone-300 py-4 text-left transition hover:border-stone-400 hover:bg-white/35 hover:px-3 dark:border-stone-700 dark:hover:border-stone-500 dark:hover:bg-white/[0.03]"
+                                    >
+                                        <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">{number}</span>
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-semibold">{title}</span>
+                                            <span className="mt-1 block text-xs leading-5 text-stone-500 dark:text-stone-400">{description}</span>
+                                        </span>
+                                        <span className="grid size-9 place-items-center rounded-full border border-stone-300 bg-white/60 text-stone-600 transition group-hover:-rotate-6 group-hover:border-stone-900 group-hover:bg-stone-900 group-hover:text-white dark:border-stone-700 dark:bg-white/5 dark:text-stone-300 dark:group-hover:border-white dark:group-hover:bg-white dark:group-hover:text-stone-950">
+                                            <Icon className="size-4" />
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-                <div className="relative flex min-h-[620px] flex-col items-center justify-center pt-10 text-center">
-                    <h1 className="ai-title-aurora max-w-5xl text-balance text-5xl font-semibold tracking-normal sm:text-7xl lg:text-8xl">无限画布</h1>
-                    <p className="mt-8 max-w-3xl text-balance text-lg leading-8 text-stone-500 dark:text-stone-400">
-                        在
-                        <Highlighter action="underline" color="#FF9800">
-                            无限画布
-                        </Highlighter>
-                        中生成、连接和重组
-                        <Highlighter action="highlight" color="#87CEFA">
-                            图片、文字与图形
-                        </Highlighter>
-                        ，让创作从单次生成变成连续推演。
-                    </p>
-                    <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-                        <Button type="primary" size="large" onClick={() => navigate(`/${primaryTool.slug}`)} icon={<ArrowRight className="size-4" />} iconPlacement="end">
-                            开始使用
-                        </Button>
-                        <Button size="large" onClick={() => navigate("/canvas")}>
-                            打开画布
+            <section id="community-works" className="mx-auto max-w-7xl scroll-mt-20 px-5 py-12 sm:px-8 sm:py-16">
+                <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <div className="mb-2 text-xs font-semibold tracking-[0.12em] text-stone-400">COMMUNITY WORKS</div>
+                        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">用户作品</h2>
+                        <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">查看社区创作者上传并通过审核的作品，发现真实的创作过程。</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="hidden items-center gap-4 text-xs text-stone-400 sm:flex">
+                            <span className="inline-flex items-center gap-1.5">
+                                <Film className="size-3.5" />
+                                {workStats.entries} 件作品
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                                <Users className="size-3.5" />
+                                {workStats.creators} 位创作者
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                                <Heart className="size-3.5" />
+                                {workStats.likes} 次点赞
+                            </span>
+                        </div>
+                        <Button type="text" icon={<ArrowRight className="size-4" />} iconPlacement="end" onClick={() => navigate("/contest")}>
+                            查看全部
                         </Button>
                     </div>
                 </div>
-
-                <section className="relative mx-auto mb-20 max-w-6xl border-t border-stone-200 pt-12 dark:border-stone-800">
-                    <div className="mb-8 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-start">
-                        <div />
-                        <div className="max-w-2xl text-center">
-                            <h2 className="text-3xl font-semibold text-stone-950 dark:text-stone-100">沉淀每一次好结果</h2>
-                            <p className="mt-3 text-base leading-7 text-stone-500 dark:text-stone-400">收藏稳定出图的提示词、参考风格和结果图片，让下一次创作从已有经验开始。</p>
-                        </div>
-                        <Button type="link" onClick={() => navigate("/prompts")} className="justify-self-center md:justify-self-end" icon={<ArrowRight className="size-4" />} iconPlacement="end">
-                            查看提示词库
-                        </Button>
-                    </div>
-                    <div className="grid auto-rows-[210px] gap-4 md:grid-cols-4">
-                        {promptShowcase.map((item, index) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => {
-                                    setPreviewIndex(index);
-                                    setPreviewOpen(true);
-                                }}
-                                className={cn(
-                                    "group relative cursor-pointer overflow-hidden border border-stone-200 bg-stone-100 text-left dark:border-stone-800 dark:bg-stone-900",
-                                    index === 0 && "md:col-span-2 md:row-span-2",
-                                    index === 3 && "md:col-span-2",
-                                )}
-                            >
-                                <img src={item.coverUrl} alt={item.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
-                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/35 to-transparent p-4 text-white">
-                                    <div className="mb-2 flex flex-wrap gap-1.5">
-                                        {item.tags.slice(0, 2).map((tag) => (
-                                            <Tag key={tag} variant="filled" className="m-0 bg-white/15 text-[11px] text-white backdrop-blur">
-                                                {tag}
-                                            </Tag>
-                                        ))}
-                                    </div>
-                                    <h3 className="text-sm font-medium">{item.title}</h3>
-                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/75">{item.prompt}</p>
-                                </div>
-                            </button>
+                {worksLoading ? (
+                    <div className="grid auto-rows-[230px] gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {Array.from({ length: 9 }, (_, index) => (
+                            <div key={index} className={index === 0 ? "overflow-hidden rounded-xl md:col-span-2 md:row-span-2" : "overflow-hidden rounded-xl"}>
+                                <Skeleton.Image active className="!size-full !rounded-none" />
+                            </div>
                         ))}
                     </div>
-                </section>
+                ) : works.length ? (
+                    <div className="grid auto-rows-[230px] gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {works.map((entry, index) => (
+                            <ShowcaseWorkCard key={entry.id} entry={entry} featured={index === 0} onOpen={(id) => navigate(`/contest?entry=${encodeURIComponent(id)}`)} />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-stone-300 bg-white/50 dark:border-stone-700 dark:bg-stone-900/30">
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={backendMode ? "还没有公开的用户作品" : "连接后端后可展示用户作品"}>
+                            <Button type="primary" onClick={() => navigate("/contest")}>
+                                上传第一件作品
+                            </Button>
+                        </Empty>
+                    </div>
+                )}
             </section>
-            <Image.PreviewGroup
-                preview={{
-                    open: previewOpen,
-                    current: previewIndex,
-                    onOpenChange: setPreviewOpen,
-                    onChange: setPreviewIndex,
-                }}
-            >
-                <div className="hidden">
-                    {promptShowcase.map((item) => (
-                        <Image key={item.id} src={item.coverUrl} alt={item.title} />
-                    ))}
-                </div>
-            </Image.PreviewGroup>
         </main>
     );
 }

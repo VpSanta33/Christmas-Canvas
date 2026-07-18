@@ -1,34 +1,130 @@
 import { createBrowserRouter, Outlet } from "react-router-dom";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
+import { RequireAdmin } from "@/components/layout/require-admin";
+import { RequireAuth } from "@/components/layout/require-auth";
+import { RequireSuperAdmin } from "@/components/layout/require-super-admin";
+import AdminLayout from "@/layouts/admin-layout";
 import UserLayout from "@/layouts/user-layout";
+import AdminChannelsPage from "@/pages/admin/channels";
+import AdminAnnouncementsPage from "@/pages/admin/announcements";
+import AdminContestPage from "@/pages/admin/contest";
+import AdminEmailPage from "@/pages/admin/email";
+import AdminOverviewPage from "@/pages/admin/overview";
+import AdminObservabilityPage from "@/pages/admin/observability";
+import AdminPlatformPage from "@/pages/admin/platform";
+import AdminSecurityPage from "@/pages/admin/security";
+import AdminStoragePage from "@/pages/admin/storage";
+import AdminUsagePage from "@/pages/admin/usage";
+import AdminUsersPage from "@/pages/admin/users";
 import AssetsPage from "@/pages/assets";
 import CanvasPage from "@/pages/canvas";
 import CanvasProjectPage from "@/pages/canvas/project";
-import ConfigPage from "@/pages/config";
+import ContestPage from "@/pages/contest";
+import CreatorProfilePage from "@/pages/creators/profile";
+import CreatorsPage from "@/pages/creators";
 import HomePage from "@/pages/home";
 import ImagePage from "@/pages/image";
+import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
-import PromptsPage from "@/pages/prompts";
+import SkillsPage from "@/pages/skills";
+import TasksPage from "@/pages/tasks";
 import VideoPage from "@/pages/video";
 
 export const router = createBrowserRouter([
+    { path: "/login", element: <LoginPage /> },
     {
         element: (
-            <UserLayout>
-                <AnalyticsTracker />
-                <Outlet />
-            </UserLayout>
+            <RequireAuth>
+                <UserLayout>
+                    <AnalyticsTracker />
+                    <Outlet />
+                </UserLayout>
+            </RequireAuth>
         ),
         children: [
             { path: "/", element: <HomePage /> },
             { path: "/image", element: <ImagePage /> },
             { path: "/video", element: <VideoPage /> },
             { path: "/assets", element: <AssetsPage /> },
-            { path: "/prompts", element: <PromptsPage /> },
+            { path: "/creators", element: <CreatorsPage /> },
+            { path: "/creators/:id", element: <CreatorProfilePage /> },
+            { path: "/skills", element: <SkillsPage /> },
+            { path: "/tasks", element: <TasksPage /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
-            { path: "/config", element: <ConfigPage /> },
+            { path: "/contest", element: <ContestPage /> },
+        ],
+    },
+    {
+        element: (
+            <RequireAdmin>
+                <AdminLayout>
+                    <Outlet />
+                </AdminLayout>
+            </RequireAdmin>
+        ),
+        children: [
+            { path: "/admin", element: <AdminOverviewPage /> },
+            { path: "/admin/observability", element: <AdminObservabilityPage /> },
+            {
+                path: "/admin/channels",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminChannelsPage />
+                    </RequireSuperAdmin>
+                ),
+            },
+            {
+                path: "/admin/users",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminUsersPage />
+                    </RequireSuperAdmin>
+                ),
+            },
+            { path: "/admin/contest", element: <AdminContestPage /> },
+            { path: "/admin/usage", element: <AdminUsagePage /> },
+            {
+                path: "/admin/platform",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminPlatformPage />
+                    </RequireSuperAdmin>
+                ),
+            },
+            {
+                path: "/admin/announcements",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminAnnouncementsPage />
+                    </RequireSuperAdmin>
+                ),
+            },
+            {
+                path: "/admin/email",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminEmailPage />
+                    </RequireSuperAdmin>
+                ),
+            },
+            {
+                path: "/admin/security",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminSecurityPage />
+                    </RequireSuperAdmin>
+                ),
+            },
+            {
+                path: "/admin/storage",
+                element: (
+                    <RequireSuperAdmin>
+                        <AdminStoragePage />
+                    </RequireSuperAdmin>
+                ),
+            },
         ],
     },
     { path: "*", element: <NotFound /> },

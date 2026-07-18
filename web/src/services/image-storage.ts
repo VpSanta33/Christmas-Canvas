@@ -1,6 +1,9 @@
 import localforage from "localforage";
 
 import { nanoid } from "nanoid";
+import { isBackendMode } from "@/constant/runtime-config";
+import { fetchBlobFromBackend, trashBlobInBackend } from "@/services/backend/media-backend";
+import { discardMediaUpload, getPendingUploadBlob, uploadBlobWithRecovery } from "@/services/media-upload-queue";
 import { readImageMeta } from "@/lib/image-utils";
 
 export type UploadedImage = {
@@ -10,6 +13,8 @@ export type UploadedImage = {
     height: number;
     bytes: number;
     mimeType: string;
+    storageStatus?: "stored" | "pending";
+    storageError?: string;
 };
 
 const store = localforage.createInstance({ name: "infinite-canvas", storeName: "image_files" });
@@ -18,18 +23,28 @@ const objectUrls = new Map<string, string>();
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
     const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
     const storageKey = `image:${nanoid()}`;
-    await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
-    const meta = await readImageMeta(url);
-    return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
+    try {
+        const meta = await readImageMeta(url);
+        if (isBackendMode()) {
+            const upload = await uploadBlobWithRecovery(storageKey, blob);
+            return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType, storageStatus: upload.stored ? "stored" : "pending", ...(upload.stored ? {} : { storageError: upload.error }) };
+        }
+        await store.setItem(storageKey, blob);
+        return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType, storageStatus: "stored" };
+    } catch (error) {
+        objectUrls.delete(storageKey);
+        URL.revokeObjectURL(url);
+        throw error;
+    }
 }
 
 export async function resolveImageUrl(storageKey?: string, fallback = "") {
     if (!storageKey) return fallback;
     const cached = objectUrls.get(storageKey);
     if (cached) return cached;
-    const blob = await store.getItem<Blob>(storageKey);
+    const blob = isBackendMode() ? (await fetchBlobFromBackend(storageKey)) || (await getPendingUploadBlob(storageKey)) : await store.getItem<Blob>(storageKey);
     if (!blob) return fallback;
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
@@ -37,11 +52,13 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
 }
 
 export async function getImageBlob(storageKey: string) {
+    if (isBackendMode()) return (await fetchBlobFromBackend(storageKey)) || getPendingUploadBlob(storageKey);
     return store.getItem<Blob>(storageKey);
 }
 
 export async function setImageBlob(storageKey: string, blob: Blob) {
-    await store.setItem(storageKey, blob);
+    if (isBackendMode()) await uploadBlobWithRecovery(storageKey, blob);
+    else await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     return url;
@@ -53,13 +70,15 @@ export async function imageToDataUrl(image: { url?: string; dataUrl?: string; st
     return blobToDataUrl(await (await fetch(url)).blob());
 }
 
-export async function deleteStoredImages(keys: Iterable<string>) {
+export async function deleteStoredImages(keys: Iterable<string>, options: { remote?: boolean } = { remote: true }) {
     await Promise.all(
         Array.from(new Set(keys)).map(async (key) => {
             const url = objectUrls.get(key);
             if (url) URL.revokeObjectURL(url);
             objectUrls.delete(key);
             await store.removeItem(key);
+            await discardMediaUpload(key);
+            if (isBackendMode() && options.remote !== false) await trashBlobInBackend(key).catch(() => undefined);
         }),
     );
 }
@@ -70,7 +89,7 @@ export async function cleanupUnusedImages(usedData: unknown) {
     await store.iterate((_value, key) => {
         if (!usedKeys.has(key)) unused.push(key);
     });
-    await deleteStoredImages(unused);
+    await deleteStoredImages(unused, { remote: false });
 }
 
 export function collectImageStorageKeys(value: unknown, keys = new Set<string>()) {

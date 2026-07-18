@@ -1,4 +1,6 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M32 8L58 54H46L32 29L18 54H6L32 8Z" fill="currentColor"/>
-  <path d="M32 40L40 54H24L32 40Z" fill="currentColor"/>
+  <title>圣诞画布</title>
+  <path d="M46 12H27C17.6 12 10 18.3 10 26C10 33.7 17.6 40 27 40H37C42 40 46 42.7 46 46C46 49.3 42 52 37 52H18" stroke="#F59E0B" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="42" y="8" width="8" height="8" rx="2" fill="#F59E0B"/>
+  <rect x="14" y="48" width="8" height="8" rx="2" fill="#F59E0B"/>
 </svg>

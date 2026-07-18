@@ -1,0 +1,9 @@
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_from_name;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_from_email;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_password_cipher;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_username;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_mode;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_port;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS smtp_host;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS email_verification_enabled;
+ALTER TABLE platform_settings DROP COLUMN IF EXISTS email_configured;

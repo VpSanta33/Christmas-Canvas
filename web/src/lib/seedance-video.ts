@@ -27,7 +27,7 @@ export const seedanceRatioOptions = [
     { value: "adaptive", label: "自适应" },
 ] as const;
 
-export const seedanceDurationOptions = [-1, 4, 5, 6, 8, 10, 12, 15] as const;
+export const seedanceDurationOptions = Array.from({ length: 12 }, (_, index) => index + 4);
 
 const seedancePixels = {
     "480p": {
@@ -89,7 +89,6 @@ export function normalizeResolutionToken(value: string) {
 }
 
 export function normalizeSeedanceDuration(value: string) {
-    if (String(value).trim() === "-1") return -1;
     const seconds = Math.floor(Number(value) || 5);
     return Math.max(4, Math.min(15, seconds));
 }
@@ -134,11 +133,7 @@ export function seedanceReferenceLabel(kind: "image" | "video" | "audio", index:
 }
 
 export function buildSeedancePromptText(prompt: string, images: ReferenceImage[], videos: ReferenceVideo[], audios: ReferenceAudio[]) {
-    const labels = [
-        ...images.map((_, index) => seedanceReferenceLabel("image", index)),
-        ...videos.map((_, index) => seedanceReferenceLabel("video", index)),
-        ...audios.map((_, index) => seedanceReferenceLabel("audio", index)),
-    ];
+    const labels = [...images.map((_, index) => seedanceReferenceLabel("image", index)), ...videos.map((_, index) => seedanceReferenceLabel("video", index)), ...audios.map((_, index) => seedanceReferenceLabel("audio", index))];
     const text = prompt.trim();
     if (!labels.length) return text;
     return `参考资产编号：${labels.join("、")}。请按这些编号理解提示词中的图片、视频和音频引用。\n\n${text}`;
