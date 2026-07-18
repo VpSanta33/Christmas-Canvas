@@ -10,6 +10,8 @@
 
 圣诞AI画布是基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发的 AI 创作工作台。项目把模型调用、素材管理和可视化工作流放进同一个创作空间，既可以作为无需账号的浏览器本地工具运行，也可以接入仓库内置的 Go 后端，获得账号、积分、服务端 AI 渠道、对象存储、创作者社区和管理后台能力。
 
+当前仓库默认面向自托管部署，执行 `docker compose up --build -d` 即可启动完整的 Web、API 和数据服务。
+
 > [!IMPORTANT]
 > 项目仍在快速迭代，数据结构和部署配置可能发生变化。升级前请备份 PostgreSQL、MinIO 数据卷以及浏览器本地数据。
 
