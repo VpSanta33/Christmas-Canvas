@@ -13,7 +13,7 @@
 当前仓库默认面向自托管部署，执行 `docker compose up --build -d` 即可启动完整的 Web、API 和数据服务。
 
 > [!IMPORTANT]
-> 项目仍在快速迭代，数据结构和部署配置可能发生变化。升级前请备份 PostgreSQL、MinIO 数据卷以及浏览器本地数据。
+> 项目仍在快速迭代，数据结构和部署配置可能发生变化。升级前请备份 PostgreSQL 数据卷、已配置的对象存储以及浏览器本地数据。
 
 ## 功能概览
 
@@ -57,7 +57,7 @@
 | 模式 | 适用场景 | 数据与密钥 | 后端能力 |
 | --- | --- | --- | --- |
 | `local` | 个人使用、快速体验、离线画布 | 画布、素材和模型配置保存在浏览器；浏览器直接请求配置的模型服务 | 不需要账号；无积分、社区和管理后台 |
-| `backend` | 自托管平台、多人使用 | 业务数据进入 PostgreSQL，媒体进入 S3/MinIO，第三方 API Key 由服务端保存 | 账号、积分、配额、代理、社区、赛事和后台管理 |
+| `backend` | 自托管平台、多人使用 | 业务数据进入 PostgreSQL；媒体对象存储可选，第三方 API Key 由服务端保存 | 账号、积分、配额、代理、社区、赛事和后台管理 |
 
 前端通过 `APP_MODE`（容器运行时）或 `VITE_APP_MODE`（构建/开发时）选择模式。backend 模式默认使用同源 `/api`，也可以通过 `API_BASE_URL` 或 `VITE_API_BASE_URL` 指向独立后端。
 
@@ -72,7 +72,7 @@ Nginx :3000  ---- static files ----> React / Vite application
   +---- /api/* ----> Go / Gin API :8080
                          |---- PostgreSQL: users, projects, assets, credits, settings
                          |---- Redis: rate limits and login protection
-                         |---- MinIO/S3: images, videos, audio and uploaded files
+                         |---- Optional S3-compatible storage: images, videos and uploaded files
                          +---- AI providers: server-side proxy and credential injection
 ```
 
@@ -86,7 +86,7 @@ Nginx :3000  ---- static files ----> React / Vite application
 
 ## Docker 一键部署
 
-根目录 Compose 默认以 backend 模式启动完整环境：前端、API、PostgreSQL、Redis、MinIO 和 Mailpit。默认开发配置内置了可运行的示例密钥，因此不创建 `.env` 也可以直接启动；生产环境必须先创建 `.env` 并替换所有默认凭据。
+根目录 Compose 默认以 backend 模式启动完整环境：前端、API、PostgreSQL 和 Redis。SMTP 与对象存储不是启动前置条件，首次部署默认关闭；第一个注册用户自动成为管理员，登录后台后再按需配置邮箱服务和 S3 兼容对象存储。默认开发配置内置了可运行的示例密钥，因此不创建 `.env` 也可以直接启动；生产环境必须先创建 `.env` 并替换所有默认凭据。
 
 ```bash
 docker compose up --build -d
@@ -97,7 +97,7 @@ docker compose ps
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少替换 JWT_SECRET、CHANNEL_ENC_KEY、数据库和 MinIO 凭据
+# 编辑 .env，至少替换 JWT_SECRET、CHANNEL_ENC_KEY、数据库和 Redis 凭据
 docker compose up --build -d
 ```
 
@@ -107,12 +107,27 @@ docker compose up --build -d
 | --- | --- | --- |
 | Web | <http://localhost:3000> | 主应用与管理后台 |
 | Health | <http://localhost:3000/healthz> | 应返回 `{"ok":true}` |
-| Mailpit | <http://localhost:8025> | 本地验证码邮件收件箱 |
-| MinIO Console | <http://localhost:9001> | 默认账号见根目录 `.env` |
 
-Compose 默认开启邮箱验证。注册后在 Mailpit 中读取 6 位验证码；第一个完成注册的用户会自动成为 `admin`，可从 `/admin` 配置 AI 渠道与平台参数。
+首次部署默认关闭邮箱验证和对象存储，注册不需要邮箱验证码或 S3 凭据。第一个注册用户会自动成为 `admin`，可从 `/admin` 配置 AI 渠道、平台参数、SMTP 邮箱和 S3 兼容对象存储。后台配置会保存到 PostgreSQL，并使用 `CHANNEL_ENC_KEY` 加密敏感密钥。
 
-默认只将 Web、Mailpit 网页和 MinIO 控制台映射到宿主机，API、PostgreSQL、Redis 和 MinIO S3 在 Compose 网络内部通信，可通过 `WEB_PORT`、`MAILPIT_WEB_PORT` 和 `MINIO_CONSOLE_PORT` 调整公开端口。
+对象存储关闭时，账号、画布、资产和 AI 代理仍可使用；需要上传或持久化媒体文件时，再在后台启用并测试 S3/MinIO/其他兼容服务。
+
+### 已有数据库的首次部署
+
+如果复用了旧的 `pgdata` 数据卷，数据库中已经保存的 `platform_settings` 会优先于 `.env`。这意味着旧部署曾关闭注册或开启邮箱验证时，仅修改 Docker 配置不会覆盖已保存的平台策略。优先使用管理员账号进入“平台设置”和“邮箱服务”页面调整；如果还没有任何可登录的管理员账号，可先检查：
+
+```bash
+docker compose exec postgres psql -U canvas -d canvas -c "SELECT configured, allow_registration, email_configured, email_verification_enabled FROM platform_settings WHERE id = 1;"
+```
+
+确认是遗留的引导配置后，可恢复首次注册入口（不会删除用户、画布或媒体数据）：
+
+```bash
+docker compose exec postgres psql -U canvas -d canvas -c "UPDATE platform_settings SET allow_registration = true, email_configured = true, email_verification_enabled = false, updated_at = now() WHERE id = 1;"
+docker compose up -d --build api app
+```
+
+上面的 `canvas` 用户名和数据库名需与 `.env` 中的 `POSTGRES_USER`、`POSTGRES_DB` 一致。注册接口本身不需要 AI API Key；如页面仍显示旧的鉴权提示，请先重新构建 Web 和 API 容器并查看 `docker compose logs -f api app`。
 
 查看日志和停止服务：
 
@@ -121,7 +136,7 @@ docker compose logs -f api app
 docker compose down
 ```
 
-`docker compose down` 保留数据库和媒体卷；确认不再需要数据时才使用 `docker compose down -v`。
+`docker compose down` 保留 PostgreSQL 和 Redis 数据卷；后台配置的对象存储不由 Compose 管理。确认不再需要数据时才使用 `docker compose down -v`。
 
 ### 仅运行本地模式
 
@@ -145,12 +160,12 @@ docker compose -f docker-compose.local.yml up --build -d
 
 ```bash
 cd server
-docker compose up -d postgres redis minio mailpit
+docker compose up -d postgres redis
 cp .env.example .env
 go run ./cmd/api
 ```
 
-后端默认监听 <http://localhost:8080>，启动时会自动执行 `server/internal/db/migrations/` 中的迁移。Mailpit Web UI 位于 <http://localhost:8025>。
+后端默认监听 <http://localhost:8080>，启动时会自动执行 `server/internal/db/migrations/` 中的迁移。此开发流程默认不启动 SMTP 或对象存储服务；需要时直接在管理员后台配置外部服务。
 
 ### 启动前端
 
@@ -195,11 +210,11 @@ go test ./...
 | `CHANNEL_ENC_KEY` | 必填；64 位 hex（32 字节） | AES-256-GCM 加密渠道、SMTP 和对象存储密钥 |
 | `DATABASE_URL` | PostgreSQL DSN | 后端业务数据与迁移目标 |
 | `REDIS_ADDR` | `redis:6379`（Compose） | 限流、每日配额与登录保护；不可用时相关限流会 fail-open |
-| `S3_*` / `STORAGE_*` | 见 `.env.example` | MinIO/S3 连接、目录前缀与公开文件 URL |
+| `S3_*` / `STORAGE_*` | 可选；默认关闭 | 仅作为管理员后台尚未配置时的对象存储回退值，通常不需要写入 Docker 配置 |
 | `ALLOW_REGISTRATION` | `true` | 是否开放用户自助注册 |
 | `REGISTER_GRANT_CREDITS` | `100` | 新用户完成注册后赠送积分 |
-| `EMAIL_VERIFICATION_ENABLED` | Compose 默认为 `true` | 是否要求注册邮箱验证码 |
-| `SMTP_*` | 本地指向 Mailpit | 验证邮件发送配置 |
+| `EMAIL_VERIFICATION_ENABLED` | Compose 默认为 `false` | 仅作为后台尚未配置时的邮箱验证回退值；正式配置请使用管理员后台 |
+| `SMTP_*` | 可选 | 仅作为后台尚未配置时的 SMTP 回退值；邮箱密码不需要写入 Docker 配置 |
 | `CORS_ORIGINS` | `http://localhost:3000` | 允许访问 API 的前端来源，多个值用逗号分隔 |
 | `ANALYTICS_GA4_ID` / `ANALYTICS_BAIDU_ID` | 空 | 可选统计 ID，留空不会加载对应统计脚本 |
 
@@ -208,10 +223,10 @@ go test ./...
 ## 生产部署注意事项
 
 1. 使用密码管理器或密钥服务生成并保存独立的 `JWT_SECRET` 与 `CHANNEL_ENC_KEY`；`CHANNEL_ENC_KEY` 可用 `openssl rand -hex 32` 生成，已加密数据不能在丢失旧密钥后恢复。
-2. 替换 PostgreSQL、Redis、MinIO 的默认凭据，不要将数据库、Redis、MinIO Console 或 Mailpit 直接暴露到公网。
+2. 替换 PostgreSQL 和 Redis 的默认凭据，不要将数据库或 Redis 直接暴露到公网。
 3. 使用 HTTPS 反向代理公开 Web 服务，并把 `CORS_ORIGINS` 限制为实际站点来源。
-4. 生产环境移除 Mailpit，配置支持 `starttls` 或 `tls` 的真实 SMTP；`SMTP_MODE=none` 只适合本地开发。
-5. 为 PostgreSQL 和对象存储建立备份策略；升级前先备份数据卷并阅读 [`CHANGELOG.md`](CHANGELOG.md)。
+4. 首次登录后，在管理员后台配置真实 SMTP 和对象存储；启用邮箱验证前先使用“发送测试邮件”验证 SMTP，启用对象存储前先执行连接测试。
+5. 为 PostgreSQL 和已启用的对象存储建立备份策略；升级前先备份数据卷并阅读 [`CHANGELOG.md`](CHANGELOG.md)。
 6. 插件代码拥有页面上下文权限，平台运营方应控制官方插件源并审核第三方插件。
 
 ## API 概览

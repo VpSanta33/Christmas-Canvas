@@ -1,6 +1,6 @@
-// Package config 从环境变量加载运行期配置。
-// 所有敏感项（数据库连接串、JWT 密钥、渠道加密密钥、对象存储凭据）只从环境变量读取，
-// 绝不硬编码、绝不入库明文；缺失时 Load 直接报错，不回退到内置默认凭据。
+// Package config 从环境变量加载启动期配置。
+// 数据库连接、JWT 密钥和渠道加密密钥来自环境变量；SMTP 与对象存储是可选的运行时回退配置，
+// 正式部署可在管理员后台保存并即时生效，敏感值会使用 CHANNEL_ENC_KEY 加密入库。
 package config
 
 import (
@@ -33,7 +33,7 @@ type Config struct {
 	// 渠道 API Key 加密（AES-256-GCM，32 字节，hex 编码）
 	ChannelEncKey []byte
 
-	// MinIO / S3
+	// 管理员后台尚未配置时使用的可选 MinIO / S3 回退值
 	S3Endpoint        string
 	S3AccessKey       string
 	S3SecretKey       string
@@ -56,7 +56,7 @@ type Config struct {
 	// 新用户注册时赠送的初始积分
 	RegisterGrantCredits int64
 
-	// 注册邮箱验证与 SMTP。敏感凭据仅从环境变量读取。
+	// 管理员后台尚未配置时使用的可选 SMTP 回退值
 	EmailVerificationEnabled  bool
 	EmailVerificationTTL      time.Duration
 	EmailVerificationCooldown time.Duration
@@ -76,16 +76,16 @@ func Load() (*Config, error) {
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		RedisAddr:                env("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:            env("REDIS_PASSWORD", ""),
-		S3Endpoint:               env("S3_ENDPOINT", "localhost:9000"),
+		S3Endpoint:               env("S3_ENDPOINT", ""),
 		S3AccessKey:              os.Getenv("S3_ACCESS_KEY"),
 		S3SecretKey:              os.Getenv("S3_SECRET_KEY"),
-		S3Bucket:                 env("S3_BUCKET", "infinite-canvas"),
+		S3Bucket:                 env("S3_BUCKET", ""),
 		S3Region:                 env("S3_REGION", "us-east-1"),
 		S3UseSSL:                 envBool("S3_USE_SSL", false),
 		S3PathPrefix:             env("STORAGE_PATH_PREFIX", ""),
 		S3ImagePathPrefix:        env("STORAGE_IMAGE_PATH_PREFIX", "image"),
 		S3VideoPathPrefix:        env("STORAGE_VIDEO_PATH_PREFIX", "Video"),
-		StorageEnabled:           envBool("STORAGE_ENABLED", true),
+		StorageEnabled:           envBool("STORAGE_ENABLED", false),
 		PublicFileBaseURL:        env("PUBLIC_FILE_BASE_URL", "/api/files/"),
 		AllowRegistration:        envBool("ALLOW_REGISTRATION", true),
 		EmailVerificationEnabled: envBool("EMAIL_VERIFICATION_ENABLED", false),

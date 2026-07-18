@@ -1,5 +1,5 @@
 # 圣诞AI画布后端服务编排
-# 一键起 Postgres + Redis + MinIO + api。开发时也可只起前三个依赖，本地 go run api。
+# 一键起 Postgres + Redis + api。邮箱和对象存储可登录管理员后台后再配置。
 services:
   postgres:
     image: postgres:16-alpine
@@ -27,31 +27,6 @@ services:
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # 控制台
-    volumes:
-      - miniodata:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  # 开发邮件沙箱：SMTP 1025，网页收件箱 http://localhost:8025。
-  # 生产环境请移除该服务，并改用支持 STARTTLS/TLS 的真实 SMTP。
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-
   api:
     build: .
     depends_on:
@@ -59,37 +34,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
     environment:
       APP_ADDR: ":8080"
       DATABASE_URL: "postgres://canvas:canvas@postgres:5432/canvas?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      S3_ENDPOINT: "minio:9000"
-      S3_ACCESS_KEY: "minioadmin"
-      S3_SECRET_KEY: "minioadmin"
-      S3_BUCKET: "canvas"
-      S3_USE_SSL: "false"
       # JWT_SECRET 与 CHANNEL_ENC_KEY 为演示占位，生产务必替换。
       # CHANNEL_ENC_KEY 必须为 64 位 hex（32 字节）。
       JWT_SECRET: "change-me-in-prod-please-32chars-min"
       CHANNEL_ENC_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       CORS_ORIGINS: "http://localhost:3000"
-      PUBLIC_FILE_BASE_URL: "/api/files/"
       ALLOW_REGISTRATION: "true"
-      EMAIL_VERIFICATION_ENABLED: "true"
-      EMAIL_VERIFICATION_TTL: "10m"
-      EMAIL_VERIFICATION_COOLDOWN: "60s"
-      SMTP_HOST: "mailpit"
-      SMTP_PORT: "1025"
-      SMTP_MODE: "none"
-      SMTP_FROM_EMAIL: "no-reply@canvas.local"
-      SMTP_FROM_NAME: "圣诞AI画布"
     ports:
       - "8080:8080"
 
 volumes:
   pgdata:
-  miniodata:

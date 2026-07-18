@@ -33,10 +33,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-      mailpit:
-        condition: service_started
     environment:
       APP_ADDR: ":8080"
       DATABASE_URL: "postgres://${POSTGRES_USER:-canvas}:${POSTGRES_PASSWORD:-canvas}@postgres:5432/${POSTGRES_DB:-canvas}?sslmode=disable"
@@ -48,29 +44,9 @@ services:
       ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-1h}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-720h}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      STORAGE_ENABLED: ${STORAGE_ENABLED:-true}
-      S3_ENDPOINT: "minio:9000"
-      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      S3_BUCKET: ${S3_BUCKET:-canvas}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_USE_SSL: "false"
-      STORAGE_PATH_PREFIX: ${STORAGE_PATH_PREFIX:-}
-      STORAGE_IMAGE_PATH_PREFIX: ${STORAGE_IMAGE_PATH_PREFIX:-image}
-      STORAGE_VIDEO_PATH_PREFIX: ${STORAGE_VIDEO_PATH_PREFIX:-Video}
-      PUBLIC_FILE_BASE_URL: /api/files/
+      # 邮箱和对象存储由管理员登录后台后配置，首次启动不依赖 SMTP/S3 服务。
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       REGISTER_GRANT_CREDITS: ${REGISTER_GRANT_CREDITS:-100}
-      EMAIL_VERIFICATION_ENABLED: ${EMAIL_VERIFICATION_ENABLED:-true}
-      EMAIL_VERIFICATION_TTL: ${EMAIL_VERIFICATION_TTL:-10m}
-      EMAIL_VERIFICATION_COOLDOWN: ${EMAIL_VERIFICATION_COOLDOWN:-60s}
-      SMTP_HOST: ${SMTP_HOST:-mailpit}
-      SMTP_PORT: ${SMTP_PORT:-1025}
-      SMTP_MODE: ${SMTP_MODE:-none}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-no-reply@canvas.local}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-圣诞AI画布}
     restart: unless-stopped
 
   postgres:
@@ -100,44 +76,6 @@ services:
       retries: 20
     restart: unless-stopped
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    ports:
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
-    volumes:
-      - miniodata:/data
-    restart: unless-stopped
-
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_started
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      S3_BUCKET: ${S3_BUCKET:-canvas}
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
-          sleep 2
-        done
-        mc mb --ignore-existing "local/$${S3_BUCKET}"
-    restart: "no"
-
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "${MAILPIT_WEB_PORT:-8025}:8025"
-    restart: unless-stopped
-
 volumes:
   pgdata:
   redisdata:
-  miniodata:

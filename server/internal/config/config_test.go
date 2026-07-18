@@ -44,6 +44,19 @@ func TestStorageRequiresS3Credentials(t *testing.T) {
 	}
 }
 
+func TestStorageDefaultsDisabled(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("STORAGE_ENABLED", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.StorageEnabled {
+		t.Fatal("expected object storage to be disabled by default")
+	}
+}
+
 func TestLoadRequiresValidEncKey(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("CHANNEL_ENC_KEY", "tooshort")
