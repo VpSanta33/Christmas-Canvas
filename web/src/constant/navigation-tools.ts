@@ -1,4 +1,4 @@
-import { ImagePlus, Images, ListTodo, Maximize2, Sparkles, UsersRound, Video } from "lucide-react";
+import { ImagePlus, Images, Layers3, ListTodo, Maximize2, Sparkles, UsersRound, Video } from "lucide-react";
 
 export const navigationTools = [
     {
@@ -30,6 +30,11 @@ export const navigationTools = [
         slug: "tasks",
         label: "任务中心",
         icon: ListTodo,
+    },
+    {
+        slug: "workspace",
+        label: "工作空间",
+        icon: Layers3,
     },
     {
         slug: "assets",

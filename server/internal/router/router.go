@@ -24,26 +24,28 @@ import (
 	"github.com/basketikun/infinite-canvas/server/internal/proxy"
 	"github.com/basketikun/infinite-canvas/server/internal/quota"
 	"github.com/basketikun/infinite-canvas/server/internal/storage"
+	"github.com/basketikun/infinite-canvas/server/internal/workspace"
 )
 
 // Deps 汇集 New 所需的全部依赖，避免超长参数列表。字段导出以便 cmd/api 装配。
 type Deps struct {
-	Cfg             *config.Config
-	AuthMgr         *auth.Manager
-	AuthHandler     *auth.Handler
-	CanvasHandler   *canvas.Handler
-	AssetHandler    *asset.Handler
-	FileHandler     *filepkg.Handler
-	ProxyHandler    *proxy.Handler
-	ChannelAdmin    *proxy.AdminHandler
-	AdminHandler    *admin.Handler
-	StorageAdmin    *storage.AdminHandler
-	CreditsHandler  *credits.Handler
-	ContestHandler  *contest.Handler
-	QuotaSvc        *quota.Service
-	UserStore       *auth.Store
-	PlatformHandler *platform.Handler
-	Pool            *pgxpool.Pool
+	Cfg              *config.Config
+	AuthMgr          *auth.Manager
+	AuthHandler      *auth.Handler
+	CanvasHandler    *canvas.Handler
+	AssetHandler     *asset.Handler
+	FileHandler      *filepkg.Handler
+	ProxyHandler     *proxy.Handler
+	ChannelAdmin     *proxy.AdminHandler
+	AdminHandler     *admin.Handler
+	StorageAdmin     *storage.AdminHandler
+	CreditsHandler   *credits.Handler
+	ContestHandler   *contest.Handler
+	WorkspaceHandler *workspace.Handler
+	QuotaSvc         *quota.Service
+	UserStore        *auth.Store
+	PlatformHandler  *platform.Handler
+	Pool             *pgxpool.Pool
 }
 
 // New 装配并返回 gin 引擎。
@@ -89,6 +91,7 @@ func registerPublicRoutes(api *gin.RouterGroup, d Deps) {
 	api.GET("/platform", d.PlatformHandler.Public)
 	api.GET("/showcase", d.ContestHandler.Showcase)
 	api.GET("/showcase/:id/cover", d.ContestHandler.ShowcaseCover)
+	api.GET("/shared/:token", d.WorkspaceHandler.GetShared)
 }
 
 // registerAuthRoutes 挂载公开认证端点（按 IP 限流，抵御暴力破解）。
@@ -112,6 +115,30 @@ func registerUserRoutes(api *gin.RouterGroup, d Deps) {
 	authed.PUT("/projects", d.CanvasHandler.Replace)
 	authed.POST("/projects", d.CanvasHandler.Upsert)
 	authed.DELETE("/projects/:id", d.CanvasHandler.Delete)
+	// 工作区能力：任务中心、版本、分享、模板、通知和团队空间。
+	authed.GET("/tasks", d.WorkspaceHandler.ListTasks)
+	authed.POST("/tasks", d.WorkspaceHandler.UpsertTask)
+	authed.DELETE("/tasks/:id", d.WorkspaceHandler.DeleteTask)
+	authed.GET("/projects/:id/versions", d.WorkspaceHandler.ListVersions)
+	authed.POST("/projects/:id/versions", d.WorkspaceHandler.CreateVersion)
+	authed.POST("/projects/:id/versions/:versionId/restore", d.WorkspaceHandler.RestoreVersion)
+	authed.PUT("/projects/:id/team", d.WorkspaceHandler.SetProjectTeam)
+	authed.GET("/projects/:id/shares", d.WorkspaceHandler.ListShares)
+	authed.POST("/projects/:id/shares", d.WorkspaceHandler.CreateShare)
+	authed.DELETE("/projects/:id/shares/:shareId", d.WorkspaceHandler.DeleteShare)
+	authed.POST("/shared/:token/copy", d.WorkspaceHandler.CopyShared)
+	authed.GET("/templates", d.WorkspaceHandler.ListTemplates)
+	authed.POST("/templates", d.WorkspaceHandler.CreateTemplate)
+	authed.POST("/templates/:id/use", d.WorkspaceHandler.UseTemplate)
+	authed.DELETE("/templates/:id", d.WorkspaceHandler.DeleteTemplate)
+	authed.GET("/notifications", d.WorkspaceHandler.ListNotifications)
+	authed.POST("/notifications/:id/read", d.WorkspaceHandler.MarkNotificationRead)
+	authed.POST("/notifications/read-all", d.WorkspaceHandler.MarkAllNotificationsRead)
+	authed.GET("/teams", d.WorkspaceHandler.ListTeams)
+	authed.POST("/teams", d.WorkspaceHandler.CreateTeam)
+	authed.GET("/teams/:id/members", d.WorkspaceHandler.ListTeamMembers)
+	authed.POST("/teams/:id/members", d.WorkspaceHandler.AddTeamMember)
+	authed.DELETE("/teams/:id/members/:userId", d.WorkspaceHandler.RemoveTeamMember)
 
 	authed.GET("/assets", d.AssetHandler.List)
 	authed.PUT("/assets", d.AssetHandler.Replace)

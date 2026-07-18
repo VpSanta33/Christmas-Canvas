@@ -17,7 +17,7 @@ import { nanoid } from "nanoid";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
-import { notifyGenerationHistoryChanged } from "@/services/generation-history";
+import { notifyGenerationHistoryChanged, syncGenerationTask } from "@/services/generation-history";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import type { ReferenceImage } from "@/types/image";
@@ -304,6 +304,7 @@ export default function ImagePage() {
     };
 
     const saveLog = (log: GenerationLog) => {
+        syncGenerationTask(log as unknown as Record<string, unknown>, "image");
         void logStore.setItem(log.id, serializeLog(log)).then(() => {
             notifyGenerationHistoryChanged();
             return refreshLogs();

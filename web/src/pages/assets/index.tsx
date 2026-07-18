@@ -1,4 +1,4 @@
-import { Copy, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
+import { Copy, Download, PencilLine, Search, Star, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Card, Drawer, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
 import { saveAs } from "file-saver";
@@ -42,6 +42,7 @@ export default function AssetsPage() {
     const removeAsset = useAssetStore((state) => state.removeAsset);
     const [keyword, setKeyword] = useState("");
     const [kindFilter, setKindFilter] = useState<AssetKind | "all">("all");
+    const [favoriteOnly, setFavoriteOnly] = useState(false);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -60,10 +61,11 @@ export default function AssetsPage() {
         const query = keyword.trim().toLowerCase();
         return validAssets.filter((asset) => {
             if (kindFilter !== "all" && asset.kind !== kindFilter) return false;
+            if (favoriteOnly && !asset.favorite) return false;
             if (!query) return true;
             return assetSearchText(asset).includes(query);
         });
-    }, [validAssets, keyword, kindFilter]);
+    }, [validAssets, keyword, kindFilter, favoriteOnly]);
 
     const visibleAssets = useMemo(() => {
         const start = (page - 1) * pageSize;
@@ -108,6 +110,7 @@ export default function AssetsPage() {
             source: values.source?.trim(),
             note: values.note?.trim(),
             metadata: editingAsset?.metadata || { source: "manual" },
+            favorite: editingAsset?.favorite || false,
         };
 
         if (values.kind === "text") {
@@ -234,6 +237,10 @@ export default function AssetsPage() {
                                 </div>
                             </div>
                             <div className="flex flex-wrap gap-4">
+                                <button type="button" className={cn("inline-flex items-center gap-1.5 text-sm font-medium", favoriteOnly ? "text-amber-600" : "text-stone-500")} onClick={() => { setFavoriteOnly((value) => !value); setPage(1); }}>
+                                    <Star className="size-4" fill={favoriteOnly ? "currentColor" : "none"} />
+                                    仅看收藏
+                                </button>
                                 <button
                                     type="button"
                                     className="cursor-pointer text-sm font-medium text-stone-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline dark:text-stone-300"
@@ -263,7 +270,7 @@ export default function AssetsPage() {
                 <div className="mx-auto flex max-w-7xl flex-col gap-5">
                     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {visibleAssets.map((asset) => (
-                            <AssetCard key={asset.id} asset={asset} onOpen={() => setPreviewAsset(asset)} onEdit={() => openEdit(asset)} onCopy={copyAssetText} onDownload={downloadImage} onDelete={() => setDeletingAsset(asset)} />
+                            <AssetCard key={asset.id} asset={asset} onOpen={() => setPreviewAsset(asset)} onEdit={() => openEdit(asset)} onCopy={copyAssetText} onDownload={downloadImage} onDelete={() => setDeletingAsset(asset)} onToggleFavorite={() => updateAsset(asset.id, { favorite: !asset.favorite })} />
                         ))}
                     </div>
 
@@ -402,7 +409,7 @@ export default function AssetsPage() {
     );
 }
 
-function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete }: { asset: Asset; onOpen: () => void; onEdit: () => void; onCopy: (asset: Asset) => void; onDownload: (asset: Asset) => void; onDelete: () => void }) {
+function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete, onToggleFavorite }: { asset: Asset; onOpen: () => void; onEdit: () => void; onCopy: (asset: Asset) => void; onDownload: (asset: Asset) => void; onDelete: () => void; onToggleFavorite: () => void }) {
     const cover = asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : "");
     const summary = assetSummary(asset);
     return (
@@ -445,6 +452,7 @@ function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete }: { as
                 </div>
             </button>
             <div className="flex items-center gap-2 px-4 pb-4">
+                <Button type="text" size="small" icon={<Star className="size-3.5" fill={asset.favorite ? "currentColor" : "none"} />} onClick={onToggleFavorite} aria-label={asset.favorite ? "取消收藏" : "收藏"} title={asset.favorite ? "取消收藏" : "收藏"} />
                 <Button size="small" onClick={onOpen}>
                     查看
                 </Button>

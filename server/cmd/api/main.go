@@ -27,6 +27,7 @@ import (
 	"github.com/basketikun/infinite-canvas/server/internal/quota"
 	"github.com/basketikun/infinite-canvas/server/internal/router"
 	"github.com/basketikun/infinite-canvas/server/internal/storage"
+	"github.com/basketikun/infinite-canvas/server/internal/workspace"
 )
 
 func main() {
@@ -105,24 +106,26 @@ func main() {
 	storageAdmin := storage.NewAdminHandler(storageManager)
 	creditsHandler := credits.NewHandler(creditsSvc)
 	contestHandler := contest.NewHandler(pool, storageManager, creditsSvc)
+	workspaceHandler := workspace.NewHandler(pool)
 
 	deps := router.Deps{
-		Cfg:             cfg,
-		AuthMgr:         authMgr,
-		AuthHandler:     authHandler,
-		CanvasHandler:   canvasHandler,
-		AssetHandler:    assetHandler,
-		FileHandler:     fileHandler,
-		ProxyHandler:    proxyHandler,
-		ChannelAdmin:    channelAdmin,
-		AdminHandler:    adminHandler,
-		StorageAdmin:    storageAdmin,
-		CreditsHandler:  creditsHandler,
-		ContestHandler:  contestHandler,
-		QuotaSvc:        quotaSvc,
-		UserStore:       userStore,
-		PlatformHandler: platformHandler,
-		Pool:            pool,
+		Cfg:              cfg,
+		AuthMgr:          authMgr,
+		AuthHandler:      authHandler,
+		CanvasHandler:    canvasHandler,
+		AssetHandler:     assetHandler,
+		FileHandler:      fileHandler,
+		ProxyHandler:     proxyHandler,
+		ChannelAdmin:     channelAdmin,
+		AdminHandler:     adminHandler,
+		StorageAdmin:     storageAdmin,
+		CreditsHandler:   creditsHandler,
+		ContestHandler:   contestHandler,
+		WorkspaceHandler: workspaceHandler,
+		QuotaSvc:         quotaSvc,
+		UserStore:        userStore,
+		PlatformHandler:  platformHandler,
+		Pool:             pool,
 	}
 	r := router.New(deps)
 

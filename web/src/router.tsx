@@ -28,11 +28,12 @@ import ImagePage from "@/pages/image";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import SkillsPage from "@/pages/skills";
-import TasksPage from "@/pages/tasks";
+import WorkspacePage, { SharedCanvasPage } from "@/pages/workspace";
 import VideoPage from "@/pages/video";
 
 export const router = createBrowserRouter([
     { path: "/login", element: <LoginPage /> },
+    { path: "/shared/:token", element: <SharedCanvasPage /> },
     {
         element: (
             <RequireAuth>
@@ -50,7 +51,8 @@ export const router = createBrowserRouter([
             { path: "/creators", element: <CreatorsPage /> },
             { path: "/creators/:id", element: <CreatorProfilePage /> },
             { path: "/skills", element: <SkillsPage /> },
-            { path: "/tasks", element: <TasksPage /> },
+            { path: "/tasks", element: <WorkspacePage initialTab="tasks" /> },
+            { path: "/workspace", element: <WorkspacePage initialTab="tasks" /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
             { path: "/contest", element: <ContestPage /> },

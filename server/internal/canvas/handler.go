@@ -27,7 +27,10 @@ type projectPayload struct {
 func (h *Handler) List(c *gin.Context) {
 	uid := middleware.UserIDFrom(c)
 	rows, err := h.pool.Query(c.Request.Context(),
-		`SELECT data FROM canvas_projects WHERE user_id = $1 ORDER BY updated_at DESC`, uid)
+		`SELECT data FROM canvas_projects p
+		 WHERE p.user_id = $1
+		    OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = p.team_id AND tm.user_id = $1)
+		 ORDER BY updated_at DESC`, uid)
 	if err != nil {
 		httpx.Internal(c, err)
 		return
@@ -91,7 +94,9 @@ func (h *Handler) Replace(c *gin.Context) {
 			continue
 		}
 		if _, err := tx.Exec(c.Request.Context(),
-			`INSERT INTO canvas_projects (id, user_id, title, data) VALUES ($1, $2, $3, $4)`,
+			`INSERT INTO canvas_projects (id, user_id, title, data) VALUES ($1, $2, $3, $4)
+			 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, data = EXCLUDED.data, updated_at = now()
+			 WHERE canvas_projects.user_id = $2`,
 			p.ID, uid, p.Title, []byte(p.Data)); err != nil {
 			httpx.Internal(c, err)
 			return

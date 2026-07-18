@@ -15,7 +15,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, seedanceReferenceLabel, seedanceVideoReferenceError, seedanceVideoReferenceHint, SEEDANCE_REFERENCE_LIMITS } from "@/lib/seedance-video";
 import { deleteStoredMedia, resolveMediaUrl, uploadMediaFile } from "@/services/file-storage";
-import { notifyGenerationHistoryChanged } from "@/services/generation-history";
+import { notifyGenerationHistoryChanged, syncGenerationTask } from "@/services/generation-history";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { createVideoGenerationTask, pollVideoGenerationTask, storeGeneratedVideo, type VideoGenerationTask } from "@/services/api/video";
 import { fetchContestEntry } from "@/services/api/contest";
@@ -326,6 +326,7 @@ export default function VideoPage() {
     };
 
     const saveLog = async (log: GenerationLog) => {
+        syncGenerationTask(log as unknown as Record<string, unknown>, "video");
         await logStore.setItem(log.id, serializeLog(log));
         notifyGenerationHistoryChanged();
         await refreshLogs();

@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { usePlatformStore } from "@/stores/use-platform-store";
 
-const PRIMARY_TOOL_SLUGS = new Set<NavigationToolSlug>(["canvas", "image", "video", "creators", "skills"]);
+const PRIMARY_TOOL_SLUGS = new Set<NavigationToolSlug>(["canvas", "image", "video", "creators", "skills", "workspace"]);
 const primaryNavigationTools = navigationTools.filter((tool) => PRIMARY_TOOL_SLUGS.has(tool.slug));
 const secondaryNavigationTools = navigationTools.filter((tool) => !PRIMARY_TOOL_SLUGS.has(tool.slug));
 

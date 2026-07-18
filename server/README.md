@@ -68,6 +68,12 @@ internal/httpx     统一响应
 | GET  | /api/channels | 需登录 | 可用 AI 渠道（不含 key） |
 | ANY  | /api/ai/:channelId/*path | 需登录 | AI 反向代理（限流+配额） |
 | POST | /api/admin/channels | admin | 新建渠道 |
+| GET/POST/DELETE | /api/tasks | 需登录 | 统一生成任务历史、状态与复用参数 |
+| GET/POST | /api/projects/:id/versions | 需登录 | 画布版本快照与恢复 |
+| GET/POST/DELETE | /api/projects/:id/shares | 需登录 | 画布查看/复制分享链接 |
+| GET/POST | /api/templates | 需登录 | 工作流模板搜索、创建和复用 |
+| GET/POST | /api/notifications | 需登录 | 通知列表与已读状态 |
+| GET/POST | /api/teams | 需登录 | 团队空间和成员角色 |
 
 ## AI 代理的关键点
 前端 backend 模式只需把某渠道的 baseUrl 指向 `/api/ai/<channelId>`，其余请求构造（`/v1/images/generations`、`/v1/responses` SSE、`/v1/videos` 轮询、`/v1/audio/speech` 等）**完全不变**。后端剥掉前端可能带的鉴权头，按渠道 `apiFormat` 注入 `Authorization: Bearer` 或 `x-goog-api-key`，透明转发，`FlushInterval` 保证 SSE 逐块下推。第三方 key 以 AES-256-GCM 加密存于 `channels` 表，前端永不接触。
