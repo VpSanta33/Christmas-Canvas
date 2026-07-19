@@ -135,11 +135,13 @@ docker compose exec postgres psql -U canvas -d canvas -c "SELECT (SELECT count(*
 确认是遗留配置后，可重新开放注册并关闭邮箱验证（不会删除用户、画布或媒体数据）：
 
 ```bash
-docker compose exec postgres psql -U canvas -d canvas -c "UPDATE platform_settings SET allow_registration = true, email_configured = true, email_verification_enabled = false, updated_at = now() WHERE id = 1;"
+docker compose exec postgres psql -U canvas -d canvas -c "UPDATE platform_settings SET configured = true, allow_registration = true, email_configured = true, email_verification_enabled = false, updated_at = now() WHERE id = 1;"
 docker compose up -d --build api app
 ```
 
 上面的 `canvas` 用户名和数据库名需与 `.env` 中的 `POSTGRES_USER`、`POSTGRES_DB` 一致。注册接口本身不需要 AI API Key；如页面仍显示旧的鉴权提示，请先重新构建 Web 和 API 容器并查看 `docker compose logs -f api app`。
+
+如果公开配置显示 `allowRegistration: true`、用户数为 `0`，但注册请求仍在几十微秒内返回无响应正文的 `403`，通常是部署地址未被 CORS 允许。更新到最新镜像后，内置 Nginx 会保留带端口的 Host，直接访问 `http://服务器地址:3000` 可正常注册。使用独立域名或外部反向代理时，还应在 `.env` 中填写完整来源（不含路径），例如 `CORS_ORIGINS=https://canvas.example.com`，然后重新创建 API 容器。
 
 查看日志和停止服务：
 
