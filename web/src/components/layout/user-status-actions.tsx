@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Coins, Keyboard, LogIn, LogOut, Puzzle, Shield, UsersRound } from "lucide-react";
+import { Coins, Keyboard, LogIn, LogOut, Puzzle, Settings2, Shield, UsersRound } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { isBackendMode } from "@/constant/runtime-config";
@@ -9,6 +9,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { logout as logoutRequest } from "@/services/api/auth";
 import { fetchCredits } from "@/services/api/credits";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 type UserStatusActionsProps = {
@@ -25,6 +26,7 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts, onOpen
     const user = useAuthStore((state) => state.user);
     const clearSession = useAuthStore((state) => state.clearSession);
     const setCredits = useAuthStore((state) => state.setCredits);
+    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const canvasTheme = canvasThemes[theme];
     const naturalIconClass = "inline-flex size-7 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 dark:text-stone-300 dark:hover:text-white [&_svg]:size-4";
     const iconStyle: CSSProperties | undefined = variant === "canvas" ? { color: canvasTheme.node.text } : undefined;
@@ -69,6 +71,9 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts, onOpen
                 </button>
             ) : null}
             <AnimatedThemeToggler theme={theme} onThemeChange={setTheme} className={naturalIconClass} style={iconStyle} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"} title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"} />
+            <button type="button" className={naturalIconClass} style={iconStyle} onClick={() => openConfigDialog(false, "channels")} aria-label="API 与同步设置" title="API 与同步设置">
+                <Settings2 className="size-4" />
+            </button>
             {onOpenShortcuts ? (
                 <button type="button" className={naturalIconClass} style={iconStyle} onClick={onOpenShortcuts} aria-label="快捷键" title="快捷键">
                     <Keyboard className="size-4" />

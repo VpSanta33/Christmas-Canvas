@@ -8,7 +8,7 @@
   面向 AI 图片、视频与多媒体创作的开源 AI 画布工作台
 </p>
 
-圣诞AI画布是基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发的 AI 创作工作台。项目把模型调用、素材管理和可视化工作流放进同一个创作空间，既可以作为无需账号的浏览器本地工具运行，也可以接入仓库内置的 Go 后端，获得账号、积分、服务端 AI 渠道、对象存储、创作者社区和管理后台能力。
+圣诞AI画布是基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发的 AI 创作工作台。项目把模型调用、素材管理和可视化工作流放进同一个创作空间，既可以让用户在浏览器中填写自己的 API URL 与 Key，也可以接入仓库内置的 Go 后端，获得账号、可选的平台 AI 渠道、对象存储、创作者社区和管理后台能力。
 
 当前仓库默认面向自托管部署，执行 `docker compose up --build -d` 即可启动完整的 Web、API 和数据服务。
 
@@ -30,7 +30,8 @@
 - 支持参考图片、参考视频、参考音频、生成参数和历史记录。
 - 原生兼容 `viraldance431` 与 `viraldance900`：保留 `/v1/videos` JSON 参数、任务状态和顶层 `url` 响应协议，并支持 431 首尾帧与多模态素材引用。
 - 支持 OpenAI 兼容格式与 Gemini 格式渠道，并允许通过自定义请求脚本适配其他服务。
-- backend 模式由服务端注入第三方 API Key，支持 SSE、渠道优先级、故障转移、健康检测和自动暂停。
+- 用户可以添加多个个人渠道，API URL 与 Key 仅保存在当前浏览器，由浏览器直接请求上游服务。
+- 管理员仍可按需提供平台渠道；平台渠道由服务端注入密钥，支持 SSE、渠道优先级、故障转移、健康检测和自动暂停。
 
 ### 平台与社区
 
@@ -67,15 +68,28 @@
 
 | 模式 | 适用场景 | 数据与密钥 | 后端能力 |
 | --- | --- | --- | --- |
-| `local` | 个人使用、快速体验、离线画布 | 画布、素材和模型配置保存在浏览器；浏览器直接请求配置的模型服务 | 不需要账号；无积分、社区和管理后台 |
-| `backend` | 自托管平台、多人使用 | 业务数据进入 PostgreSQL；媒体对象存储可选，第三方 API Key 由服务端保存 | 账号、积分、配额、代理、社区、赛事和后台管理 |
+| `local` | 个人使用、快速体验、离线画布 | 画布、素材和个人模型配置保存在浏览器；浏览器直接请求配置的模型服务 | 不需要账号；无积分、社区和管理后台 |
+| `backend` | 自托管平台、多人使用 | 业务数据进入 PostgreSQL；个人 API Key 仍只在各自浏览器中；管理员可额外提供平台渠道 | 账号、社区、赛事、后台管理，以及可选的平台积分与 AI 代理 |
 
 前端通过 `APP_MODE`（容器运行时）或 `VITE_APP_MODE`（构建/开发时）选择模式。backend 模式默认使用同源 `/api`，也可以通过 `API_BASE_URL` 或 `VITE_API_BASE_URL` 指向独立后端。
+
+### 个人 API（BYOK）
+
+打开页面右上角的设置按钮，在“渠道”中填写调用 URL、API Key 和模型。个人渠道与平台渠道会同时出现在模型选择器中，两者的调用路径彼此独立：
+
+- **个人渠道**：浏览器直接请求用户填写的 URL，不经过圣诞AI画布后端，不消耗平台积分。
+- **平台渠道**：登录后通过 `/api/ai/:channelId` 请求，由服务端注入管理员保存的 Key，并执行平台计费与限流。
+- **本地密钥**：个人 API Key 只写入当前浏览器的 `localStorage`，不会进入账号数据、云端同步或 WebDAV 清单；清除站点数据后需要重新填写。
+- **跨域要求**：个人 API 必须允许部署站点的 Origin、请求方法和 `Authorization` / `x-goog-api-key` 等请求头。HTTPS 页面不能直连 HTTP API，否则会被浏览器的混合内容策略拦截。
+
+如果上游没有模型列表接口，可在渠道编辑器中手动增加模型名称并指定能力。调用 URL 可以填写服务根地址或包含 `/v1` 的 OpenAI 兼容地址，应用会自动规范化常见路径。
 
 ## 系统架构
 
 ```text
 Browser
+  |
+  +---- personal API URL/Key ------------------------> AI provider (CORS required)
   |
   v
 Nginx :3000  ---- static files ----> React / Vite application
@@ -84,7 +98,7 @@ Nginx :3000  ---- static files ----> React / Vite application
                          |---- PostgreSQL: users, projects, assets, credits, settings
                          |---- Redis: rate limits and login protection
                          |---- Optional S3-compatible storage: images, videos and uploaded files
-                         +---- AI providers: server-side proxy and credential injection
+                         +---- Optional platform AI channels: proxy and credential injection
 ```
 
 | 目录 | 主要职责 | 技术 |
@@ -97,7 +111,7 @@ Nginx :3000  ---- static files ----> React / Vite application
 
 ## Docker 一键部署
 
-根目录 Compose 默认以 backend 模式启动完整环境：前端、API、PostgreSQL 和 Redis。SMTP 与对象存储不是启动前置条件，首次部署默认关闭；第一个注册用户自动成为管理员，登录后台后再按需配置邮箱服务和 S3 兼容对象存储。默认开发配置内置了可运行的示例密钥，因此不创建 `.env` 也可以直接启动；生产环境必须先创建 `.env` 并替换所有默认凭据。
+根目录 Compose 默认以 backend 模式启动完整环境：前端、API、PostgreSQL 和 Redis。SMTP、对象存储和平台 AI 渠道都不是启动前置条件，首次部署默认关闭；第一个注册用户自动成为管理员，登录后台后再按需配置这些平台能力。普通用户可以直接在浏览器中填写自己的 API URL 与 Key，不需要管理员先配置 AI Key。默认开发配置内置了可运行的基础设施密钥，因此不创建 `.env` 也可以直接启动；生产环境必须先创建 `.env` 并替换所有默认凭据。
 
 ```bash
 docker compose up --build -d
@@ -119,9 +133,9 @@ docker compose up --build -d
 | Web | <http://localhost:3000> | 主应用与管理后台 |
 | Health | <http://localhost:3000/healthz> | 应返回 `{"ok":true}` |
 
-首次部署默认关闭邮箱验证和对象存储，注册不需要邮箱验证码或 S3 凭据。第一个注册用户会自动成为 `admin`，可从 `/admin` 配置 AI 渠道、平台参数、SMTP 邮箱和 S3 兼容对象存储。后台配置会保存到 PostgreSQL，并使用 `CHANNEL_ENC_KEY` 加密敏感密钥。
+首次部署默认关闭邮箱验证和对象存储，注册不需要邮箱验证码、S3 凭据或 AI API Key。第一个注册用户会自动成为 `admin`，可从 `/admin` 配置可选的平台 AI 渠道、平台参数、SMTP 邮箱和 S3 兼容对象存储。后台配置会保存到 PostgreSQL，并使用 `CHANNEL_ENC_KEY` 加密敏感密钥。
 
-对象存储关闭时，账号、画布、资产和 AI 代理仍可使用；需要上传或持久化媒体文件时，再在后台启用并测试 S3/MinIO/其他兼容服务。
+对象存储关闭时，账号、画布、资产、个人 API 直连和平台 AI 代理仍可使用；需要跨设备持久化媒体文件时，再在后台启用并测试 S3/MinIO/其他兼容服务。
 
 ### 已有数据库的首次部署
 
@@ -161,7 +175,7 @@ docker compose down
 docker compose -f docker-compose.local.yml up --build -d
 ```
 
-打开 <http://localhost:3000> 后，在应用配置中填写自己的模型 Base URL 和 API Key。数据默认保存在当前浏览器中。
+打开 <http://localhost:3000> 后，在右上角设置中填写自己的模型调用 URL 和 API Key。数据与密钥默认保存在当前浏览器中，上游接口同样需要允许浏览器跨域访问。
 
 ## 本地开发
 
@@ -239,7 +253,7 @@ go test ./...
 
 1. 使用密码管理器或密钥服务生成并保存独立的 `JWT_SECRET` 与 `CHANNEL_ENC_KEY`；`CHANNEL_ENC_KEY` 可用 `openssl rand -hex 32` 生成，已加密数据不能在丢失旧密钥后恢复。
 2. 替换 PostgreSQL 和 Redis 的默认凭据，不要将数据库或 Redis 直接暴露到公网。
-3. 使用 HTTPS 反向代理公开 Web 服务，并把 `CORS_ORIGINS` 限制为实际站点来源。
+3. 使用 HTTPS 反向代理公开 Web 服务，并把后端 `CORS_ORIGINS` 限制为实际站点来源；个人 API 上游也必须单独允许该站点 Origin。
 4. 首次登录后，在管理员后台配置真实 SMTP 和对象存储；启用邮箱验证前先使用“发送测试邮件”验证 SMTP，启用对象存储前先执行连接测试。
 5. 为 PostgreSQL 和已启用的对象存储建立备份策略；升级前先备份数据卷并阅读 [`CHANGELOG.md`](CHANGELOG.md)。
 6. 插件代码拥有页面上下文权限，平台运营方应控制官方插件源并审核第三方插件。
@@ -254,8 +268,8 @@ go test ./...
 | `/api/projects` | 用户画布项目列表、替换、写入和删除 |
 | `/api/assets` | 用户素材列表、替换、写入和删除 |
 | `/api/files/*` | 鉴权媒体上传、下载和回收站删除 |
-| `/api/channels` | 前端可用渠道、默认模型和计费目录，不返回 API Key |
-| `/api/ai/:channelId/*` | AI 请求代理、密钥注入、限流、计费和故障转移 |
+| `/api/channels` | 可选的平台渠道、默认模型和计费目录，不返回 API Key；个人渠道不经过此接口 |
+| `/api/ai/:channelId/*` | 仅用于平台渠道的 AI 请求代理、密钥注入、限流、计费和故障转移 |
 | `/api/credits/*` | 用户积分余额与流水 |
 | `/api/contest/*`、`/api/creators/*` | 大赛、作品、关注、收藏和创作者页面 |
 | `/api/admin/*` | 渠道、用户、平台、存储、安全、审计和运营管理 |

@@ -14,7 +14,6 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     const handledConfigParams = useRef(false);
     const bootstrapped = useRef(false);
     const updateConfig = useConfigStore((state) => state.updateConfig);
-    const config = useConfigStore((state) => state.config);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
 
     // backend 模式启动引导：模型目录是公开只读数据，访客也要加载；
@@ -49,16 +48,13 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         searchParams.delete("apiKey");
         searchParams.delete("apikey");
         window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
-        if (isBackendMode()) {
-            message.warning("平台模型由管理员统一配置，已忽略本地接口参数");
-            return;
-        }
-        const firstChannel = config.channels[0];
+        const currentConfig = useConfigStore.getState().config;
+        const firstPersonalChannel = currentConfig.channels.find((channel) => channel.source === "personal");
         updateConfig(
             "channels",
-            firstChannel
-                ? config.channels.map((channel, index) =>
-                      index === 0
+            firstPersonalChannel
+                ? currentConfig.channels.map((channel) =>
+                      channel.id === firstPersonalChannel.id
                           ? {
                                 ...channel,
                                 ...(baseUrl ? { baseUrl } : {}),
@@ -66,13 +62,13 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
                             }
                           : channel,
                   )
-                : [createModelChannel({ id: "default", name: "默认渠道", baseUrl: baseUrl || undefined, apiKey: apiKey || "" })],
+                : [createModelChannel({ name: "个人 API", source: "personal", baseUrl: baseUrl || undefined, apiKey: apiKey || "" }), ...currentConfig.channels],
         );
         if (baseUrl) updateConfig("baseUrl", baseUrl);
         if (apiKey) updateConfig("apiKey", apiKey);
         openConfigDialog(false);
         message.success("已导入本地直连配置");
-    }, [config.channels, message, openConfigDialog, updateConfig]);
+    }, [message, openConfigDialog, updateConfig]);
 
     return <>{children}</>;
 }

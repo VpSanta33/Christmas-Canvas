@@ -1,12 +1,23 @@
-import { App, Button, Form, Input, Modal, Progress, Tabs } from "antd";
-import { Cloud, Pencil, Plus, RefreshCw, Trash2, Wifi } from "lucide-react";
+import { Alert, App, Button, Form, Input, Modal, Progress, Tabs, Tag } from "antd";
+import { Cloud, KeyRound, Pencil, Plus, RefreshCw, Trash2, Wifi } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ChannelEditorDrawer } from "@/components/layout/channel-editor-drawer";
 import { syncAppDataToBackend, syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { isBackendMode } from "@/constant/runtime-config";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
-import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import {
+    createModelChannel,
+    modelOptionsFromChannels,
+    normalizeModelOptionValue,
+    selectableModelsByCapability,
+    useConfigStore,
+    type AiConfig,
+    type ApiCallFormat,
+    type ConfigTabKey,
+    type ModelCapability,
+    type ModelChannel,
+} from "@/stores/use-config-store";
 
 type WebdavDomainProgress = {
     label: string;
@@ -50,7 +61,9 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const setConfigDialogOpen = useConfigStore((state) => state.setConfigDialogOpen);
     const clearPromptContinue = useConfigStore((state) => state.clearPromptContinue);
     const webdavReady = Boolean(webdav.url.trim());
-    const editingChannel = config.channels.find((channel) => channel.id === editingChannelId) || null;
+    const personalChannels = config.channels.filter((channel) => channel.source === "personal");
+    const platformChannels = config.channels.filter((channel) => channel.source === "platform");
+    const editingChannel = personalChannels.find((channel) => channel.id === editingChannelId) || null;
     useEffect(() => setActiveTab(initialTab), [initialTab]);
 
     const saveConfig = (nextConfig: AiConfig) => {
@@ -58,31 +71,31 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const finishConfig = () => {
-        const ready = config.channels.some((channel) => channel.baseUrl.trim() && channel.apiKey.trim() && channel.models.length);
+        const ready = personalChannels.some((channel) => channel.baseUrl.trim() && channel.apiKey.trim() && channel.models.length) || platformChannels.some((channel) => channel.models.length);
         setConfigDialogOpen(false);
         if (!ready) return;
         message.success(shouldPromptContinue ? "配置已保存，请继续刚才的请求" : "配置已保存");
         clearPromptContinue();
     };
 
-    const updateChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, channels));
+    const updatePersonalChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, [...channels, ...platformChannels]));
 
     const addChannel = () => {
-        const channel = createModelChannel({ name: `渠道 ${config.channels.length + 1}` });
-        updateChannels([...config.channels, channel]);
+        const channel = createModelChannel({ name: `个人渠道 ${personalChannels.length + 1}`, source: "personal" });
+        updatePersonalChannels([...personalChannels, channel]);
         setEditingChannelId(channel.id);
     };
 
     const deleteChannel = (id: string) => {
-        if (config.channels.length <= 1) {
+        if (!isBackendMode() && personalChannels.length <= 1) {
             message.warning("至少保留一个渠道");
             return;
         }
-        updateChannels(config.channels.filter((channel) => channel.id !== id));
+        updatePersonalChannels(personalChannels.filter((channel) => channel.id !== id));
     };
 
     const saveChannel = (channel: ModelChannel) => {
-        updateChannels(config.channels.map((item) => (item.id === channel.id ? channel : item)));
+        updatePersonalChannels(personalChannels.map((item) => (item.id === channel.id ? { ...channel, source: "personal" } : item)));
     };
 
     const testWebdav = async () => {
@@ -163,30 +176,65 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: "渠道",
                         children: (
                             <div>
-                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                                    <div className="text-xs text-stone-500">每个渠道选择一个协议并拉取模型，为每个模型指定能力（生图/视频/文本/音频），并可自定义调用脚本。</div>
+                                <Alert className="mb-4" type="info" showIcon title="个人 API Key 仅保存在当前浏览器" description="个人渠道由浏览器直接请求填写的接口，不会上传到平台或 WebDAV。接口必须允许当前站点跨域访问（CORS），建议使用 HTTPS。" />
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="flex items-center gap-2 text-sm font-semibold">
+                                            <KeyRound className="size-4" />
+                                            个人渠道
+                                            <Tag className="m-0">{personalChannels.length}</Tag>
+                                        </div>
+                                        <div className="mt-1 text-xs text-stone-500">填写调用 URL 和 Key，拉取或手动添加模型，并为模型指定生图、视频、文本或音频能力。</div>
+                                    </div>
                                     <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>
-                                        新增渠道
+                                        新增个人渠道
                                     </Button>
                                 </div>
                                 <div className="space-y-2">
-                                    {config.channels.map((channel) => (
-                                        <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
-                                            <div className="min-w-0">
-                                                <div className="truncate text-sm font-semibold">{channel.name || "未命名渠道"}</div>
-                                                <div className="mt-1 truncate text-xs text-stone-500">
-                                                    {apiFormatLabel(channel.apiFormat)} · {channel.models.length} 个模型 · {channel.baseUrl || "未填写接口地址"}
+                                    {personalChannels.length ? (
+                                        personalChannels.map((channel) => (
+                                            <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
+                                                <div className="min-w-0">
+                                                    <div className="truncate text-sm font-semibold">{channel.name || "未命名渠道"}</div>
+                                                    <div className="mt-1 truncate text-xs text-stone-500">
+                                                        {apiFormatLabel(channel.apiFormat)} · {channel.models.length} 个模型 · {channel.baseUrl || "未填写接口地址"}
+                                                    </div>
+                                                </div>
+                                                <div className="flex shrink-0 gap-2">
+                                                    <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => setEditingChannelId(channel.id)}>
+                                                        编辑
+                                                    </Button>
+                                                    <Button size="small" danger icon={<Trash2 className="size-3.5" />} aria-label="删除个人渠道" title="删除个人渠道" onClick={() => deleteChannel(channel.id)} />
                                                 </div>
                                             </div>
-                                            <div className="flex shrink-0 gap-2">
-                                                <Button size="small" icon={<Pencil className="size-3.5" />} onClick={() => setEditingChannelId(channel.id)}>
-                                                    编辑
-                                                </Button>
-                                                <Button size="small" danger icon={<Trash2 className="size-3.5" />} onClick={() => deleteChannel(channel.id)} />
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    ) : (
+                                        <div className="rounded-lg border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500 dark:border-stone-700">尚未配置个人渠道</div>
+                                    )}
                                 </div>
+                                {isBackendMode() && platformChannels.length ? (
+                                    <section className="mt-6 border-t border-stone-200 pt-5 dark:border-stone-800">
+                                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                                            <Cloud className="size-4" />
+                                            平台渠道
+                                            <Tag className="m-0">{platformChannels.length}</Tag>
+                                            <span className="text-xs font-normal text-stone-500">登录后可用，由管理员维护</span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {platformChannels.map((channel) => (
+                                                <div key={channel.id} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-sm font-semibold">{channel.name || "未命名渠道"}</div>
+                                                        <div className="mt-1 truncate text-xs text-stone-500">
+                                                            {apiFormatLabel(channel.apiFormat)} · {channel.models.length} 个模型
+                                                        </div>
+                                                    </div>
+                                                    <Tag className="m-0 shrink-0">只读</Tag>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </section>
+                                ) : null}
                             </div>
                         ),
                     },
@@ -262,7 +310,7 @@ export function AppConfigModal() {
             title={
                 <div>
                     <div className="text-lg font-semibold">配置与用户偏好</div>
-                    <div className="mt-1 text-xs font-normal text-stone-500">渠道聚合、默认模型和同步偏好</div>
+                    <div className="mt-1 text-xs font-normal text-stone-500">个人 API、平台模型和数据同步</div>
                 </div>
             }
             open={isConfigOpen}
@@ -278,16 +326,18 @@ export function AppConfigModal() {
 }
 
 function withChannels(config: AiConfig, channels: ModelChannel[]): AiConfig {
+    const primaryChannel = channels.find((channel) => channel.source === "personal") || channels[0];
     const next: AiConfig = {
         ...config,
         channels,
         models: modelOptionsFromChannels(channels),
-        baseUrl: channels[0]?.baseUrl || config.baseUrl,
-        apiKey: channels[0]?.apiKey || config.apiKey,
-        apiFormat: channels[0]?.apiFormat || config.apiFormat,
+        baseUrl: primaryChannel?.baseUrl || config.baseUrl,
+        apiKey: primaryChannel?.apiKey || "",
+        apiFormat: primaryChannel?.apiFormat || config.apiFormat,
     };
     return {
         ...next,
+        model: next.models.includes(normalizeModelOptionValue(config.model, channels)) ? normalizeModelOptionValue(config.model, channels) : next.models[0] || "",
         imageModel: pickDefaultModel(next, "image", config.imageModel),
         videoModel: pickDefaultModel(next, "video", config.videoModel),
         textModel: pickDefaultModel(next, "text", config.textModel),

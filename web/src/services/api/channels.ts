@@ -26,10 +26,10 @@ export async function syncBackendChannels(): Promise<void> {
     const store = useConfigStore.getState();
     try {
         const catalog = await fetchPublicChannels();
-        const channels = catalog.channels.filter((channel) => channel.enabled).map((channel) => createModelChannel({ ...channel, apiKey: "" }));
+        const channels = catalog.channels.filter((channel) => channel.enabled).map((channel) => createModelChannel({ ...channel, source: "platform", apiKey: "" }));
         store.replaceBackendChannels(channels, catalog.defaults, catalog.generationPricing);
     } catch (error) {
-        // 平台目录失败时保持空目录，绝不回退到浏览器本地保存的渠道或密钥。
+        // 平台目录失败时只清空平台渠道，个人渠道仍可继续直连。
         store.replaceBackendChannels([]);
         throw error;
     }

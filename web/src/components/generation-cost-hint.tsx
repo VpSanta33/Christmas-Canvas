@@ -3,11 +3,11 @@ import { Coins } from "lucide-react";
 import { isBackendMode } from "@/constant/runtime-config";
 import { estimatedGenerationCost } from "@/lib/generation-cost";
 import { useAuthStore } from "@/stores/use-auth-store";
-import type { AiConfig } from "@/stores/use-config-store";
+import { resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 
 export function GenerationCostHint({ config, model, requests = 1 }: { config: AiConfig; model: string; requests?: number }) {
     const credits = useAuthStore((state) => state.user?.credits ?? 0);
-    if (!isBackendMode() || !model) return null;
+    if (!isBackendMode() || !model || resolveModelChannel(config, model).source !== "platform") return null;
     const cost = estimatedGenerationCost(config, model, requests);
     const insufficient = cost > credits;
 

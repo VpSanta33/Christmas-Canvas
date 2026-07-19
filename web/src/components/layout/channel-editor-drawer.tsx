@@ -49,7 +49,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const removeModel = (name: string) => setModels(draft.models.filter((model) => model.name !== name));
 
     const save = () => {
-        onSave({ ...draft, name: draft.name.trim() || "未命名渠道", models: normalizeChannelModels(draft.models) });
+        onSave({ ...draft, source: "personal", name: draft.name.trim() || "未命名渠道", models: normalizeChannelModels(draft.models) });
         onClose();
     };
 
@@ -57,7 +57,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         <Drawer
             open={open}
             width={640}
-            title="编辑渠道"
+            title="编辑个人渠道"
             onClose={onClose}
             styles={{ body: { paddingTop: 16 } }}
             extra={
@@ -84,7 +84,8 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">API Key</span>
-                    <Input.Password value={draft.apiKey} onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
+                    <Input.Password value={draft.apiKey} autoComplete="new-password" onChange={(event) => patch({ apiKey: event.target.value })} placeholder="sk-..." />
+                    <span className="mt-1 block text-xs text-stone-500">仅保存在当前浏览器，由浏览器直接发送给上游接口。</span>
                 </label>
             </div>
 

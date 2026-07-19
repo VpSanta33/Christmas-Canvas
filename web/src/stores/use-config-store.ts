@@ -9,6 +9,7 @@ import { getAuthToken } from "@/stores/use-auth-store";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
+export type ChannelSource = "personal" | "platform";
 
 export type GenerationPricing = {
     imageQuality: Record<string, number>;
@@ -39,6 +40,7 @@ export const defaultGenerationPricing: GenerationPricing = {
 export type ModelChannel = {
     id: string;
     name: string;
+    source: ChannelSource;
     baseUrl: string;
     apiKey: string;
     apiFormat: ApiCallFormat;
@@ -98,6 +100,7 @@ export const defaultConfig: AiConfig = {
         {
             id: "default",
             name: "默认渠道",
+            source: "personal",
             baseUrl: OPENAI_BASE_URL,
             apiKey: "",
             apiFormat: "openai",
@@ -199,7 +202,7 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const channel = resolveModelChannel(config, model);
-    if (isBackendMode()) return Boolean(model.trim() && channel.id && getAuthToken());
+    if (channel.source === "platform") return Boolean(isBackendMode() && model.trim() && channel.id && getAuthToken());
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
@@ -221,16 +224,27 @@ export const useConfigStore = create<ConfigStore>()(
                 })),
             replaceBackendChannels: (channels, defaults = {}, pricing) =>
                 set((state) => {
-                    const models = modelOptionsFromChannels(channels);
-                    const candidate: AiConfig = { ...state.config, channelMode: "remote", channels, models };
+                    const platformChannels = channels.map((channel) => createModelChannel({ ...channel, source: "platform", apiKey: "" }));
+                    const platformIds = new Set(platformChannels.map((channel) => channel.id));
+                    const personalChannels = state.config.channels.filter((channel) => channel.source === "personal" && !(platformIds.has(channel.id) && !channel.apiKey.trim()));
+                    const mergedChannels = [...personalChannels, ...platformChannels];
+                    const models = modelOptionsFromChannels(mergedChannels);
+                    const candidate: AiConfig = { ...state.config, channelMode: "remote", channels: mergedChannels, models };
                     const generationPricing = normalizeGenerationPricing(pricing);
                     const select = (value: string, capability: ModelCapability) => {
                         const options = selectableModelsByCapability(candidate, capability);
-                        const current = normalizeModelOptionValue(value, channels);
-                        const platformDefault = normalizeModelOptionValue(defaults[capability], channels);
-                        return (options.includes(current) ? current : "") || (options.includes(platformDefault) ? platformDefault : "") || options[0] || "";
+                        const current = normalizeModelOptionValue(value, mergedChannels);
+                        const platformDefault = normalizeModelOptionValue(defaults[capability], mergedChannels);
+                        return (
+                            (options.includes(current) && isModelChannelUsable(candidate, current) ? current : "") ||
+                            (options.includes(platformDefault) ? platformDefault : "") ||
+                            options.find((option) => isModelChannelUsable(candidate, option)) ||
+                            options[0] ||
+                            ""
+                        );
                     };
-                    const genericDefault = normalizeModelOptionValue(defaults.text || defaults.image, channels);
+                    const currentModel = normalizeModelOptionValue(state.config.model, mergedChannels);
+                    const genericDefault = normalizeModelOptionValue(defaults.text || defaults.image, mergedChannels);
                     const imageModel = select(state.config.imageModel, "image");
                     const videoModel = select(state.config.videoModel, "video");
                     const textModel = select(state.config.textModel, "text");
@@ -240,7 +254,7 @@ export const useConfigStore = create<ConfigStore>()(
                         backendCatalogLoaded: true,
                         config: {
                             ...candidate,
-                            model: normalizeModelOptionValue(state.config.model, channels) || genericDefault || models[0] || "",
+                            model: (isModelChannelUsable(candidate, currentModel) ? currentModel : "") || genericDefault || models.find((option) => isModelChannelUsable(candidate, option)) || models[0] || "",
                             imageModel,
                             videoModel,
                             textModel,
@@ -260,8 +274,6 @@ export const useConfigStore = create<ConfigStore>()(
                 })),
             isAiConfigReady: (config, model) => isAiConfigReady(config, model),
             openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => {
-                // 平台模式的渠道、密钥和模型价格只能由管理员后台维护。
-                if (isBackendMode()) return;
                 set({ isConfigOpen: true, shouldPromptContinue, configTab });
             },
             setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
@@ -321,20 +333,10 @@ export function useEffectiveConfig() {
     const backendCatalogLoaded = useConfigStore((state) => state.backendCatalogLoaded);
     const backendMode = isBackendMode();
     return useMemo(() => {
-        if (!backendMode) return { ...config, channelMode: "local" as const };
+        const personalChannels = config.channels.filter((channel) => channel.source === "personal");
+        if (!backendMode) return configForChannels(config, personalChannels, "local");
         if (backendCatalogLoaded) return { ...config, channelMode: "remote" as const };
-        // 后台目录返回前不展示浏览器里残留的本地渠道，避免平台模型配置被绕过。
-        return {
-            ...config,
-            channelMode: "remote" as const,
-            channels: [],
-            models: [],
-            model: "",
-            imageModel: "",
-            videoModel: "",
-            textModel: "",
-            audioModel: "",
-        };
+        return configForChannels(config, personalChannels, "remote");
     }, [backendCatalogLoaded, backendMode, config]);
 }
 
@@ -371,8 +373,9 @@ export function normalizeGenerationPricing(value?: Partial<GenerationPricing>): 
 }
 
 export function generationPricingForModel(config: AiConfig, value: string): GenerationPricing {
-    const pricing = findChannelModel(config, value)?.model.generationPricing;
-    return normalizeGenerationPricing(pricing ?? config.generationPricing);
+    const match = findChannelModel(config, value);
+    const pricing = match?.model.generationPricing;
+    return normalizeGenerationPricing(pricing ?? (match?.channel.source === "personal" ? defaultGenerationPricing : config.generationPricing));
 }
 
 function normalizePointMap(value: Record<string, number> | undefined, defaults: Record<string, number>) {
@@ -412,6 +415,7 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
     return {
         id: channel?.id?.trim() || nanoid(),
         name: channel?.name?.trim() || "新渠道",
+        source: channel?.source === "platform" ? "platform" : "personal",
         baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
         apiKey: channel?.apiKey || "",
         apiFormat,
@@ -473,10 +477,8 @@ export function resolveModelChannel(config: AiConfig, value: string) {
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
-    // backend 模式：不把第三方密钥交给浏览器。把 baseUrl 指向 /api/ai/:channelId 反向代理，
-    // 凭证换成用户 JWT（后端剥离后注入真正的渠道密钥）。apiFormat 保持不变，
-    // 因此各请求函数的 URL 拼装（/v1/... vs gemini path）与 body 完全无需改动。
-    if (isBackendMode()) {
+    // 平台渠道由后端代理并注入管理员保存的密钥；个人渠道始终由浏览器直接请求上游。
+    if (isBackendMode() && channel.source === "platform") {
         return {
             ...config,
             model: modelOptionName(value || config.model),
@@ -491,6 +493,32 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,
+    };
+}
+
+function isModelChannelUsable(config: AiConfig, value: string) {
+    const decoded = decodeChannelModel(value);
+    if (!decoded) return false;
+    const channel = config.channels.find((item) => item.id === decoded.channelId);
+    return Boolean(channel && (channel.source === "platform" || (channel.baseUrl.trim() && channel.apiKey.trim())));
+}
+
+function configForChannels(config: AiConfig, channels: ModelChannel[], channelMode: AiConfig["channelMode"]): AiConfig {
+    const models = modelOptionsFromChannels(channels);
+    const candidate: AiConfig = { ...config, channelMode, channels, models };
+    const select = (value: string, capability: ModelCapability) => {
+        const options = selectableModelsByCapability(candidate, capability);
+        const current = normalizeModelOptionValue(value, channels);
+        return (options.includes(current) ? current : "") || options[0] || "";
+    };
+    const model = normalizeModelOptionValue(config.model, channels);
+    return {
+        ...candidate,
+        model: (models.includes(model) ? model : "") || models[0] || "",
+        imageModel: select(config.imageModel, "image"),
+        videoModel: select(config.videoModel, "video"),
+        textModel: select(config.textModel, "text"),
+        audioModel: select(config.audioModel, "audio"),
     };
 }
 
