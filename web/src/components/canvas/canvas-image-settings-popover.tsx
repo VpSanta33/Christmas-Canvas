@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
-import { GenerationCostHint } from "@/components/generation-cost-hint";
 import { ImageSettingsPanel, imageQualityLabel, imageSizeLabel } from "@/components/image-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -120,7 +119,6 @@ function ImageSettingsPortal({
         <div ref={panelRef} className="canvas-image-settings-popover" style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
             <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
             <div className="mt-4 border-t pt-3" style={{ borderColor: theme.node.stroke }}>
-                <GenerationCostHint config={config} model={config.model || config.imageModel} requests={Math.max(1, Math.floor(Number(config.count)) || 1)} />
             </div>
         </div>,
         document.body,

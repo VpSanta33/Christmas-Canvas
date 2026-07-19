@@ -5,7 +5,6 @@ import localforage from "localforage";
 import { saveAs } from "file-saver";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
-import { GenerationCostHint } from "@/components/generation-cost-hint";
 import { ModelPicker } from "@/components/model-picker";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
@@ -523,7 +522,6 @@ export default function ImagePage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <GenerationCostHint config={effectiveConfig} model={model} requests={generationCount} />
                             <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
                                 开始生成
                             </Button>

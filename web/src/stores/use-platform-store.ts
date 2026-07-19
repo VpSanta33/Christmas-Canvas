@@ -4,7 +4,6 @@ export type PublicPlatformSettings = {
     siteName: string;
     logoUrl: string;
     allowRegistration: boolean;
-    registerGrantCredits: number;
     announcement: string;
     maintenanceEnabled: boolean;
     maintenanceNotice: string;
@@ -15,7 +14,6 @@ export const defaultPlatformSettings: PublicPlatformSettings = {
     siteName: "圣诞画布",
     logoUrl: "/logo.svg",
     allowRegistration: true,
-    registerGrantCredits: 100,
     announcement: "",
     maintenanceEnabled: false,
     maintenanceNotice: "",

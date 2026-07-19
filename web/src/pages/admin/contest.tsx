@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { App, Button, Input, InputNumber, Modal, Segmented, Space, Table, Tag } from "antd";
+import { App, Button, Input, Modal, Segmented, Space, Table, Tag } from "antd";
 import { Star } from "lucide-react";
 
-import { featureContestEntry, fetchAdminContest, fetchAdminContestBlob, reviewContestEntry, settleContestEntry, type AdminContestEntry, type AdminContestStatus } from "@/services/api/admin";
+import { featureContestEntry, fetchAdminContest, fetchAdminContestBlob, reviewContestEntry, type AdminContestEntry, type AdminContestStatus } from "@/services/api/admin";
 import { extractErrorMessage } from "@/utils/http-error";
 
 const STATUS_TAG: Record<AdminContestStatus, { label: string; color: string }> = {
@@ -11,17 +11,13 @@ const STATUS_TAG: Record<AdminContestStatus, { label: string; color: string }> =
     rejected: { label: "已拒绝", color: "red" },
 };
 
-// AdminContestPage：管理员审核作品（先审核后公开）并手动结算奖励积分。
+// AdminContestPage：管理员审核作品并维护首页推荐。
 export default function AdminContestPage() {
     const { message, modal } = App.useApp();
     const [filter, setFilter] = useState<AdminContestStatus | "all">("pending");
     const [items, setItems] = useState<AdminContestEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [preview, setPreview] = useState<{ entry: AdminContestEntry; url: string | null } | null>(null);
-    const [settleTarget, setSettleTarget] = useState<AdminContestEntry | null>(null);
-    const [settleAmount, setSettleAmount] = useState<number | null>(10);
-    const [settleNote, setSettleNote] = useState("");
-    const [settleSaving, setSettleSaving] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -95,22 +91,6 @@ export default function AdminContestPage() {
         });
     };
 
-    const submitSettle = async () => {
-        if (!settleTarget || !settleAmount || settleAmount <= 0) return;
-        setSettleSaving(true);
-        try {
-            await settleContestEntry(settleTarget.id, settleAmount, settleNote.trim() || undefined);
-            message.success(`已为 ${settleTarget.authorName} 结算 ${settleAmount} 积分`);
-            setSettleTarget(null);
-            setSettleNote("");
-            await load();
-        } catch (error) {
-            message.error(extractErrorMessage(error, "结算失败"));
-        } finally {
-            setSettleSaving(false);
-        }
-    };
-
     const toggleFeatured = async (entry: AdminContestEntry) => {
         try {
             await featureContestEntry(entry.id, !entry.featured);
@@ -125,7 +105,7 @@ export default function AdminContestPage() {
         <div>
             <header className="mb-6">
                 <h1 className="text-xl font-semibold text-stone-950 dark:text-stone-100">大赛审核</h1>
-                <p className="mt-1 text-sm text-stone-500">先审核后公开：通过的作品才会出现在广场；点赞不再自动发积分，由此处手动结算奖励。</p>
+                <p className="mt-1 text-sm text-stone-500">通过的作品会进入公开广场，可按需设置为首页推荐。</p>
             </header>
 
             <Segmented
@@ -174,7 +154,6 @@ export default function AdminContestPage() {
                         render: (s: AdminContestStatus, e) => (
                             <div className="space-y-1">
                                 <Tag color={STATUS_TAG[s].color}>{STATUS_TAG[s].label}</Tag>
-                                {e.settled ? <Tag color="purple">已结算</Tag> : null}
                                 {e.featured ? <Tag color="gold">首页推荐</Tag> : null}
                             </div>
                         ),
@@ -187,7 +166,7 @@ export default function AdminContestPage() {
                     },
                     {
                         title: "操作",
-                        width: 320,
+                        width: 250,
                         render: (_, e) => (
                             <Space wrap>
                                 <Button size="small" onClick={() => void openPreview(e)}>
@@ -203,17 +182,6 @@ export default function AdminContestPage() {
                                         拒绝
                                     </Button>
                                 ) : null}
-                                <Button
-                                    size="small"
-                                    disabled={e.status !== "approved" || e.settled}
-                                    onClick={() => {
-                                        setSettleTarget(e);
-                                        setSettleAmount(10);
-                                        setSettleNote("");
-                                    }}
-                                >
-                                    {e.settled ? "已结算" : e.status === "approved" ? "结算积分" : "通过后结算"}
-                                </Button>
                                 <Button size="small" icon={<Star className="size-3.5" />} disabled={e.status !== "approved"} onClick={() => void toggleFeatured(e)}>
                                     {e.featured ? "取消推荐" : "首页推荐"}
                                 </Button>
@@ -237,26 +205,6 @@ export default function AdminContestPage() {
             <Modal open={preview !== null} title={preview?.entry.title} onCancel={closePreview} footer={null} width={720} destroyOnClose>
                 <div className="aspect-video overflow-hidden rounded-lg bg-black">
                     {preview?.url ? <video src={preview.url} controls autoPlay playsInline className="size-full object-contain" /> : <div className="grid size-full place-items-center text-sm text-stone-400">加载中…</div>}
-                </div>
-            </Modal>
-
-            <Modal
-                open={settleTarget !== null}
-                title={`结算积分 · ${settleTarget?.authorName || ""}`}
-                onCancel={() => setSettleTarget(null)}
-                onOk={submitSettle}
-                confirmLoading={settleSaving}
-                okButtonProps={{ disabled: !settleAmount || settleAmount <= 0 }}
-                okText="确认结算"
-                cancelText="取消"
-                destroyOnHidden
-            >
-                <div className="space-y-4">
-                    <p className="text-sm text-stone-500">
-                        作品「{settleTarget?.title}」当前 <span className="tabular-nums">{settleTarget?.likes ?? 0}</span> 个点赞。结算后积分直接发放到作者账户，每件作品仅可结算一次。
-                    </p>
-                    <InputNumber min={1} value={settleAmount} onChange={setSettleAmount} style={{ width: "100%" }} addonAfter="积分" autoFocus />
-                    <Input value={settleNote} maxLength={200} placeholder="结算备注（可选）" onChange={(event) => setSettleNote(event.target.value)} />
                 </div>
             </Modal>
         </div>

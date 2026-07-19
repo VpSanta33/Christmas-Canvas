@@ -29,13 +29,9 @@ export default function AdminOverviewPage() {
     const stats: Stat[] = data
         ? [
               { label: "用户总数", value: data.users.total, hint: `${data.users.disabled} 已禁用` },
-              { label: "渠道总数", value: data.channels.total, hint: `${data.channels.enabled} 已启用` },
-              { label: "今日 AI 调用", value: data.usage.today },
-              { label: "今日成功率", value: `${data.usage.successRate.toFixed(1)}%`, hint: `${data.usage.errorsToday} 次异常` },
-              { label: "近 7 日调用", value: data.usage.last7Days },
-              { label: "近 7 日积分消费", value: data.credits.consumedLast7Days },
               { label: "媒体存储", value: formatBytes(data.storage.bytes), hint: `${data.storage.files} 个文件` },
-              { label: "待审核作品", value: data.content.contestPending, hint: `${data.content.contestApproved} 件已通过` },
+              { label: "待审核作品", value: data.content.contestPending },
+              { label: "已通过作品", value: data.content.contestApproved },
           ]
         : [];
 
@@ -43,7 +39,7 @@ export default function AdminOverviewPage() {
         <div>
             <header className="mb-6">
                 <h1 className="text-xl font-semibold text-stone-950 dark:text-stone-100">系统概览</h1>
-                <p className="mt-1 text-sm text-stone-500">用户、渠道与 AI 调用量一览</p>
+                <p className="mt-1 text-sm text-stone-500">用户、媒体存储与社区内容概览</p>
             </header>
             {loading ? (
                 <div className="flex justify-center py-20">

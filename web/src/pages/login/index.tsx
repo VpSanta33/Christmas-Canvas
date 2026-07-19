@@ -6,7 +6,6 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { isBackendMode } from "@/constant/runtime-config";
 import { login, register, resendVerification, verifyEmail, type AuthSession } from "@/services/api/auth";
-import { syncBackendChannels } from "@/services/api/channels";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { extractErrorCode, extractErrorMessage } from "@/utils/http-error";
@@ -45,9 +44,8 @@ export default function LoginPage() {
     if (!isBackendMode()) return <Navigate to="/" replace />;
     if (token) return <Navigate to={from} replace />;
 
-    const completeAuthentication = async (session: AuthSession, successMessage: string) => {
+    const completeAuthentication = (session: AuthSession, successMessage: string) => {
         setSession({ token: session.token, refreshToken: session.refreshToken, user: session.user });
-        await syncBackendChannels().catch(() => message.warning("登录成功，但模型渠道暂未加载"));
         message.success(successMessage);
         navigate(from, { replace: true });
     };
@@ -69,7 +67,7 @@ export default function LoginPage() {
         setSubmitting(true);
         try {
             if (mode === "login") {
-                await completeAuthentication(await login(values.email, values.password), "登录成功");
+                completeAuthentication(await login(values.email, values.password), "登录成功");
                 return;
             }
             const result = await register(values.email, values.password, values.displayName);
@@ -78,7 +76,7 @@ export default function LoginPage() {
                 message.success("验证码已发送，请查收邮箱");
                 return;
             }
-            await completeAuthentication(result, "注册成功");
+            completeAuthentication(result, "注册成功");
         } catch (error) {
             const code = extractErrorCode(error);
             message.error(extractErrorMessage(error, mode === "login" ? "登录失败" : "注册失败"));
@@ -94,7 +92,7 @@ export default function LoginPage() {
         }
         setVerifying(true);
         try {
-            await completeAuthentication(await verifyEmail(verificationEmail, verificationCode, challengeToken), "邮箱验证成功，欢迎加入");
+            completeAuthentication(await verifyEmail(verificationEmail, verificationCode, challengeToken), "邮箱验证成功，欢迎加入");
         } catch (error) {
             const code = extractErrorCode(error);
             if (code === "verification_expired" || code === "verification_attempts_exceeded") {
@@ -267,7 +265,7 @@ export default function LoginPage() {
                                                 mode === key ? "text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100" : "text-stone-400 after:bg-transparent hover:text-stone-700 dark:text-stone-500 dark:hover:text-stone-300",
                                             )}
                                         >
-                                            {key === "login" ? "登录" : `注册${platform.registerGrantCredits > 0 ? ` · 赠 ${platform.registerGrantCredits} 积分` : ""}`}
+                                            {key === "login" ? "登录" : "注册"}
                                         </button>
                                     ))}
                                 </div>

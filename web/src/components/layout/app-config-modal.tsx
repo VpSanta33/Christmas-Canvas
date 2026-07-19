@@ -62,7 +62,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const clearPromptContinue = useConfigStore((state) => state.clearPromptContinue);
     const webdavReady = Boolean(webdav.url.trim());
     const personalChannels = config.channels.filter((channel) => channel.source === "personal");
-    const platformChannels = config.channels.filter((channel) => channel.source === "platform");
     const editingChannel = personalChannels.find((channel) => channel.id === editingChannelId) || null;
     useEffect(() => setActiveTab(initialTab), [initialTab]);
 
@@ -71,14 +70,14 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const finishConfig = () => {
-        const ready = personalChannels.some((channel) => channel.baseUrl.trim() && channel.apiKey.trim() && channel.models.length) || platformChannels.some((channel) => channel.models.length);
+        const ready = personalChannels.some((channel) => channel.baseUrl.trim() && channel.apiKey.trim() && channel.models.length);
         setConfigDialogOpen(false);
         if (!ready) return;
         message.success(shouldPromptContinue ? "配置已保存，请继续刚才的请求" : "配置已保存");
         clearPromptContinue();
     };
 
-    const updatePersonalChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, [...channels, ...platformChannels]));
+    const updatePersonalChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, channels));
 
     const addChannel = () => {
         const channel = createModelChannel({ name: `个人渠道 ${personalChannels.length + 1}`, source: "personal" });
@@ -87,7 +86,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const deleteChannel = (id: string) => {
-        if (!isBackendMode() && personalChannels.length <= 1) {
+        if (personalChannels.length <= 1) {
             message.warning("至少保留一个渠道");
             return;
         }
@@ -212,29 +211,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         <div className="rounded-lg border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500 dark:border-stone-700">尚未配置个人渠道</div>
                                     )}
                                 </div>
-                                {isBackendMode() && platformChannels.length ? (
-                                    <section className="mt-6 border-t border-stone-200 pt-5 dark:border-stone-800">
-                                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                                            <Cloud className="size-4" />
-                                            平台渠道
-                                            <Tag className="m-0">{platformChannels.length}</Tag>
-                                            <span className="text-xs font-normal text-stone-500">登录后可用，由管理员维护</span>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {platformChannels.map((channel) => (
-                                                <div key={channel.id} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
-                                                    <div className="min-w-0">
-                                                        <div className="truncate text-sm font-semibold">{channel.name || "未命名渠道"}</div>
-                                                        <div className="mt-1 truncate text-xs text-stone-500">
-                                                            {apiFormatLabel(channel.apiFormat)} · {channel.models.length} 个模型
-                                                        </div>
-                                                    </div>
-                                                    <Tag className="m-0 shrink-0">只读</Tag>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </section>
-                                ) : null}
                             </div>
                         ),
                     },
@@ -310,7 +286,7 @@ export function AppConfigModal() {
             title={
                 <div>
                     <div className="text-lg font-semibold">配置与用户偏好</div>
-                    <div className="mt-1 text-xs font-normal text-stone-500">个人 API、平台模型和数据同步</div>
+                    <div className="mt-1 text-xs font-normal text-stone-500">个人 API 与数据同步</div>
                 </div>
             }
             open={isConfigOpen}

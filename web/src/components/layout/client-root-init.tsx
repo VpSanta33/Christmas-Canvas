@@ -4,7 +4,6 @@ import { App } from "antd";
 
 import { isBackendMode } from "@/constant/runtime-config";
 import { fetchMe } from "@/services/api/auth";
-import { syncBackendChannels } from "@/services/api/channels";
 import { syncPlatformSettings } from "@/services/api/platform";
 import { createModelChannel, useConfigStore } from "@/stores/use-config-store";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -16,8 +15,7 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
 
-    // backend 模式启动引导：模型目录是公开只读数据，访客也要加载；
-    // 登录态校验与目录请求并行，避免普通用户退回浏览器本地渠道。
+    // backend 模式只负责账号与平台站点信息；模型渠道始终由用户在浏览器中维护。
     useEffect(() => {
         if (bootstrapped.current) return;
         bootstrapped.current = true;
@@ -26,14 +24,13 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
             setReady(true);
             return;
         }
-        const catalogRequest = syncBackendChannels().catch(() => message.warning("平台模型加载失败，请稍后刷新"));
         const platformRequest = syncPlatformSettings().catch(() => undefined);
         const sessionRequest = token
             ? fetchMe()
                   .then(setUser)
                   .catch(() => clearSession())
             : Promise.resolve();
-        void Promise.all([catalogRequest, platformRequest, sessionRequest]).finally(() => setReady(true));
+        void Promise.all([platformRequest, sessionRequest]).finally(() => setReady(true));
     }, [message]);
 
     useEffect(() => {

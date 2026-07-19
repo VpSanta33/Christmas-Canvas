@@ -1,13 +1,11 @@
 import type { CSSProperties } from "react";
-import { useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Coins, Keyboard, LogIn, LogOut, Puzzle, Settings2, Shield, UsersRound } from "lucide-react";
+import { Keyboard, LogIn, LogOut, Puzzle, Settings2, Shield, UsersRound } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { isBackendMode } from "@/constant/runtime-config";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { logout as logoutRequest } from "@/services/api/auth";
-import { fetchCredits } from "@/services/api/credits";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -25,24 +23,10 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts, onOpen
     const navigate = useNavigate();
     const user = useAuthStore((state) => state.user);
     const clearSession = useAuthStore((state) => state.clearSession);
-    const setCredits = useAuthStore((state) => state.setCredits);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const canvasTheme = canvasThemes[theme];
     const naturalIconClass = "inline-flex size-7 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 dark:text-stone-300 dark:hover:text-white [&_svg]:size-4";
     const iconStyle: CSSProperties | undefined = variant === "canvas" ? { color: canvasTheme.node.text } : undefined;
-
-    useEffect(() => {
-        if (!backendMode || !user) return;
-        let alive = true;
-        fetchCredits()
-            .then((credits) => alive && setCredits(credits))
-            .catch(() => undefined);
-        return () => {
-            alive = false;
-        };
-        // 仅在用户身份变化时拉取，避免 setCredits 更新 user 引用导致的循环。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backendMode, user?.id, setCredits]);
 
     const handleLogout = async () => {
         await logoutRequest().catch(() => undefined);
@@ -58,11 +42,7 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts, onOpen
                     style={variant === "canvas" ? { ...iconStyle, background: canvasTheme.toolbar.panel, borderColor: canvasTheme.toolbar.border } : undefined}
                     title={user.email}
                 >
-                    <span className="hidden max-w-[7rem] truncate border-r border-stone-200 px-2 2xl:block dark:border-stone-700">{user.displayName || user.email}</span>
-                    <span className="inline-flex h-full items-center gap-1 bg-amber-50 px-2 font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300" title={`积分余额：${user.credits}`}>
-                        <Coins className="size-3.5" />
-                        <span className="tabular-nums">{user.credits}</span>
-                    </span>
+                    <span className="max-w-[9rem] truncate px-2">{user.displayName || user.email}</span>
                 </span>
             ) : null}
             {onOpenPlugins ? (

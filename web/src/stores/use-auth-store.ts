@@ -11,7 +11,6 @@ export type AuthUser = {
     emailVerified: boolean;
     displayName: string;
     role: string;
-    credits: number;
 };
 
 type AuthState = {
@@ -22,7 +21,6 @@ type AuthState = {
     isReady: boolean;
     setSession: (payload: { token: string; refreshToken?: string | null; user: AuthUser | null }) => void;
     setUser: (user: AuthUser | null) => void;
-    setCredits: (credits: number) => void;
     setReady: (ready: boolean) => void;
     clearSession: () => void;
 };
@@ -38,7 +36,6 @@ export const useAuthStore = create<AuthState>()(
             isReady: false,
             setSession: ({ token, refreshToken, user }) => set({ token, refreshToken: refreshToken ?? null, user }),
             setUser: (user) => set({ user }),
-            setCredits: (credits) => set((state) => (state.user ? { user: { ...state.user, credits } } : {})),
             setReady: (ready) => set({ isReady: ready }),
             clearSession: () => set({ token: null, refreshToken: null, user: null }),
         }),

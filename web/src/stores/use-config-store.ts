@@ -3,9 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
-import { API_BASE_URL, isBackendMode } from "@/constant/runtime-config";
 import { isViraldanceVideoModel } from "@/lib/viraldance-video";
-import { getAuthToken } from "@/stores/use-auth-store";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -25,8 +23,6 @@ export type ChannelModel = {
     script?: string;
     generationPricing?: GenerationPricing;
 };
-
-export type PlatformModelDefaults = Record<ModelCapability, string>;
 
 export const VIDEO_SECONDS_MIN = 1;
 export const VIDEO_SECONDS_MAX = 15;
@@ -147,12 +143,10 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
 type ConfigStore = {
     config: AiConfig;
     webdav: WebdavSyncConfig;
-    backendCatalogLoaded: boolean;
     isConfigOpen: boolean;
     configTab: ConfigTabKey;
     shouldPromptContinue: boolean;
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
-    replaceBackendChannels: (channels: ModelChannel[], defaults?: Partial<PlatformModelDefaults>, pricing?: Partial<GenerationPricing>) => void;
     updateWebdavConfig: <K extends keyof WebdavSyncConfig>(key: K, value: WebdavSyncConfig[K]) => void;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
     openConfigDialog: (shouldPromptContinue?: boolean, tab?: ConfigTabKey) => void;
@@ -202,7 +196,6 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const channel = resolveModelChannel(config, model);
-    if (channel.source === "platform") return Boolean(isBackendMode() && model.trim() && channel.id && getAuthToken());
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
@@ -211,7 +204,6 @@ export const useConfigStore = create<ConfigStore>()(
         (set) => ({
             config: defaultConfig,
             webdav: defaultWebdavSyncConfig,
-            backendCatalogLoaded: false,
             isConfigOpen: false,
             configTab: "channels",
             shouldPromptContinue: false,
@@ -222,49 +214,6 @@ export const useConfigStore = create<ConfigStore>()(
                         [key]: value,
                     },
                 })),
-            replaceBackendChannels: (channels, defaults = {}, pricing) =>
-                set((state) => {
-                    const platformChannels = channels.map((channel) => createModelChannel({ ...channel, source: "platform", apiKey: "" }));
-                    const platformIds = new Set(platformChannels.map((channel) => channel.id));
-                    const personalChannels = state.config.channels.filter((channel) => channel.source === "personal" && !(platformIds.has(channel.id) && !channel.apiKey.trim()));
-                    const mergedChannels = [...personalChannels, ...platformChannels];
-                    const models = modelOptionsFromChannels(mergedChannels);
-                    const candidate: AiConfig = { ...state.config, channelMode: "remote", channels: mergedChannels, models };
-                    const generationPricing = normalizeGenerationPricing(pricing);
-                    const select = (value: string, capability: ModelCapability) => {
-                        const options = selectableModelsByCapability(candidate, capability);
-                        const current = normalizeModelOptionValue(value, mergedChannels);
-                        const platformDefault = normalizeModelOptionValue(defaults[capability], mergedChannels);
-                        return (
-                            (options.includes(current) && isModelChannelUsable(candidate, current) ? current : "") ||
-                            (options.includes(platformDefault) ? platformDefault : "") ||
-                            options.find((option) => isModelChannelUsable(candidate, option)) ||
-                            options[0] ||
-                            ""
-                        );
-                    };
-                    const currentModel = normalizeModelOptionValue(state.config.model, mergedChannels);
-                    const genericDefault = normalizeModelOptionValue(defaults.text || defaults.image, mergedChannels);
-                    const imageModel = select(state.config.imageModel, "image");
-                    const videoModel = select(state.config.videoModel, "video");
-                    const textModel = select(state.config.textModel, "text");
-                    const audioModel = select(state.config.audioModel, "audio");
-                    const videoSelection = configuredVideoSelection(generationPricingForModel({ ...candidate, generationPricing }, videoModel), state.config.vquality, state.config.videoSeconds);
-                    return {
-                        backendCatalogLoaded: true,
-                        config: {
-                            ...candidate,
-                            model: (isModelChannelUsable(candidate, currentModel) ? currentModel : "") || genericDefault || models.find((option) => isModelChannelUsable(candidate, option)) || models[0] || "",
-                            imageModel,
-                            videoModel,
-                            textModel,
-                            audioModel,
-                            generationPricing,
-                            vquality: videoSelection.quality,
-                            videoSeconds: videoSelection.seconds,
-                        },
-                    };
-                }),
             updateWebdavConfig: (key, value) =>
                 set((state) => ({
                     webdav: {
@@ -330,14 +279,10 @@ export const useConfigStore = create<ConfigStore>()(
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
-    const backendCatalogLoaded = useConfigStore((state) => state.backendCatalogLoaded);
-    const backendMode = isBackendMode();
     return useMemo(() => {
         const personalChannels = config.channels.filter((channel) => channel.source === "personal");
-        if (!backendMode) return configForChannels(config, personalChannels, "local");
-        if (backendCatalogLoaded) return { ...config, channelMode: "remote" as const };
-        return configForChannels(config, personalChannels, "remote");
-    }, [backendCatalogLoaded, backendMode, config]);
+        return configForChannels(config, personalChannels, "local");
+    }, [config]);
 }
 
 /** Normalize a mixed list of raw model names or model objects into deduped ChannelModel entries. */
@@ -373,9 +318,7 @@ export function normalizeGenerationPricing(value?: Partial<GenerationPricing>): 
 }
 
 export function generationPricingForModel(config: AiConfig, value: string): GenerationPricing {
-    const match = findChannelModel(config, value);
-    const pricing = match?.model.generationPricing;
-    return normalizeGenerationPricing(pricing ?? (match?.channel.source === "personal" ? defaultGenerationPricing : config.generationPricing));
+    return normalizeGenerationPricing(findChannelModel(config, value)?.model.generationPricing ?? defaultGenerationPricing);
 }
 
 function normalizePointMap(value: Record<string, number> | undefined, defaults: Record<string, number>) {
@@ -477,16 +420,6 @@ export function resolveModelChannel(config: AiConfig, value: string) {
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
-    // 平台渠道由后端代理并注入管理员保存的密钥；个人渠道始终由浏览器直接请求上游。
-    if (isBackendMode() && channel.source === "platform") {
-        return {
-            ...config,
-            model: modelOptionName(value || config.model),
-            baseUrl: `${API_BASE_URL}/ai/${channel.id}`,
-            apiKey: getAuthToken() || "",
-            apiFormat: channel.apiFormat,
-        };
-    }
     return {
         ...config,
         model: modelOptionName(value || config.model),
@@ -494,13 +427,6 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,
     };
-}
-
-function isModelChannelUsable(config: AiConfig, value: string) {
-    const decoded = decodeChannelModel(value);
-    if (!decoded) return false;
-    const channel = config.channels.find((item) => item.id === decoded.channelId);
-    return Boolean(channel && (channel.source === "platform" || (channel.baseUrl.trim() && channel.apiKey.trim())));
 }
 
 function configForChannels(config: AiConfig, channels: ModelChannel[], channelMode: AiConfig["channelMode"]): AiConfig {
@@ -523,7 +449,7 @@ function configForChannels(config: AiConfig, channels: ModelChannel[], channelMo
 }
 
 function normalizeChannels(config: AiConfig) {
-    const persistedChannels = Array.isArray(config.channels) ? config.channels : [];
+    const persistedChannels = Array.isArray(config.channels) ? config.channels.filter((channel) => channel.source !== "platform") : [];
     const channels = persistedChannels.map((channel, index) =>
         createModelChannel({
             ...channel,

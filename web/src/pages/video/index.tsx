@@ -7,7 +7,6 @@ import { saveAs } from "file-saver";
 import { useSearchParams } from "react-router-dom";
 
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
-import { GenerationCostHint } from "@/components/generation-cost-hint";
 import { ModelPicker } from "@/components/model-picker";
 import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { VideoSettingsPanel, normalizeVideoResolutionValue, normalizeVideoSizeValue, videoSecondsLabel, videoSizeLabel } from "@/components/video-settings-panel";
@@ -74,6 +73,7 @@ type UpdateAiConfig = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => 
 
 const LOG_STORE_KEY = "infinite-canvas:video_generation_logs";
 const logStore = localforage.createInstance({ name: "infinite-canvas", storeName: "video_generation_logs" });
+const VIDEO_TASK_TIMEOUT_MS = 12 * 60 * 1000;
 
 export default function VideoPage() {
     const { message } = App.useApp();
@@ -210,7 +210,8 @@ export default function VideoPage() {
         try {
             const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references, snapshot.videoReferences, snapshot.audioReferences);
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, videoReferences: snapshot.videoReferences, audioReferences: snapshot.audioReferences, durationMs: 0, status: "生成中", task });
-            await saveLog(log);
+            await saveLog(log, false);
+            message.success(`任务已提交到个人 API：${task.id}`);
             void pollGenerationLog(log, snapshot.config);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "生成失败";
@@ -339,17 +340,17 @@ export default function VideoPage() {
         setDeleteConfirmOpen(false);
     };
 
-    const saveLog = async (log: GenerationLog) => {
+    const saveLog = async (log: GenerationLog, resumePending = true) => {
         syncGenerationTask(log as unknown as Record<string, unknown>, "video");
         await logStore.setItem(log.id, serializeLog(log));
         notifyGenerationHistoryChanged();
-        await refreshLogs();
+        await refreshLogs(resumePending);
     };
 
-    const refreshLogs = async () => {
+    const refreshLogs = async (resumePending = true) => {
         const nextLogs = await readStoredLogs();
         setLogs(nextLogs);
-        resumePendingLogs(nextLogs);
+        if (resumePending) resumePendingLogs(nextLogs);
         return nextLogs;
     };
 
@@ -367,7 +368,10 @@ export default function VideoPage() {
         setResults((value) => (value.length ? value : [{ id: log.id, status: "pending" }]));
         const taskConfig = buildVideoConfig({ ...effectiveConfig, ...log.config }, log.task.model || log.model);
         try {
-            for (let attempt = 0; attempt < 120; attempt += 1) {
+            const deadline = log.createdAt + VIDEO_TASK_TIMEOUT_MS;
+            const pollDelay = log.task.provider === "seedance" || log.task.provider === "viraldance" ? 5000 : 2500;
+            if (Date.now() >= deadline) throw new Error(`视频任务 ${log.task.id} 已超过 12 分钟，请到个人 API 服务确认任务状态`);
+            while (Date.now() < deadline) {
                 const state = await pollVideoGenerationTask(configOverride || taskConfig, log.task);
                 if (state.status === "completed") {
                     const stored = await storeGeneratedVideo(state.result);
@@ -391,9 +395,9 @@ export default function VideoPage() {
                     return;
                 }
                 if (state.status === "failed") throw new Error(state.error);
-                if (attempt === 119) throw new Error("视频生成超时，请稍后重试");
-                await delay(log.task.provider === "seedance" ? 5000 : 2500);
+                await delay(Math.min(pollDelay, Math.max(0, deadline - Date.now())));
             }
+            throw new Error(`视频任务 ${log.task.id} 已超过 12 分钟，请到个人 API 服务确认任务状态`);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "生成失败";
             setResults([{ id: log.id, status: "failed", error: errorMessage }]);
@@ -581,7 +585,6 @@ export default function VideoPage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <GenerationCostHint config={effectiveConfig} model={model} />
                             <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
                                 开始生成
                             </Button>
@@ -790,6 +793,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                 <Checkbox className="mt-0.5" checked={selected} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectedChange(event.target.checked)} />
                 <div className="min-w-0">
                     <div className="truncate text-sm font-semibold leading-5">{log.title}</div>
+                    {log.task ? <div className="mt-0.5 truncate font-mono text-[11px] text-stone-400" title={log.task.id}>任务 {log.task.id}</div> : null}
                     <div className="mt-2 flex flex-wrap gap-1">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.size}</Tag>
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.resolution}p</Tag>

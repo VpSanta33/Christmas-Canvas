@@ -6,16 +6,13 @@ import { RequireAuth } from "@/components/layout/require-auth";
 import { RequireSuperAdmin } from "@/components/layout/require-super-admin";
 import AdminLayout from "@/layouts/admin-layout";
 import UserLayout from "@/layouts/user-layout";
-import AdminChannelsPage from "@/pages/admin/channels";
 import AdminAnnouncementsPage from "@/pages/admin/announcements";
 import AdminContestPage from "@/pages/admin/contest";
 import AdminEmailPage from "@/pages/admin/email";
 import AdminOverviewPage from "@/pages/admin/overview";
-import AdminObservabilityPage from "@/pages/admin/observability";
 import AdminPlatformPage from "@/pages/admin/platform";
 import AdminSecurityPage from "@/pages/admin/security";
 import AdminStoragePage from "@/pages/admin/storage";
-import AdminUsagePage from "@/pages/admin/usage";
 import AdminUsersPage from "@/pages/admin/users";
 import AssetsPage from "@/pages/assets";
 import CanvasPage from "@/pages/canvas";
@@ -68,15 +65,6 @@ export const router = createBrowserRouter([
         ),
         children: [
             { path: "/admin", element: <AdminOverviewPage /> },
-            { path: "/admin/observability", element: <AdminObservabilityPage /> },
-            {
-                path: "/admin/channels",
-                element: (
-                    <RequireSuperAdmin>
-                        <AdminChannelsPage />
-                    </RequireSuperAdmin>
-                ),
-            },
             {
                 path: "/admin/users",
                 element: (
@@ -86,7 +74,6 @@ export const router = createBrowserRouter([
                 ),
             },
             { path: "/admin/contest", element: <AdminContestPage /> },
-            { path: "/admin/usage", element: <AdminUsagePage /> },
             {
                 path: "/admin/platform",
                 element: (

@@ -88,7 +88,7 @@ export default function AdminEmailPage() {
                 </div>
             ) : (
                 <div className="space-y-4">
-                    <Alert type="info" showIcon icon={<ShieldCheck className="size-4" />} message="SMTP 密码使用 AES-256-GCM 加密保存，管理接口不会返回密码明文。启用验证后，新用户通过验证码后才会创建正式账号并领取注册积分。" />
+                    <Alert type="info" showIcon icon={<ShieldCheck className="size-4" />} title="SMTP 密码使用 AES-256-GCM 加密保存，管理接口不会返回密码明文。启用验证后，新用户通过验证码后才会创建正式账号。" />
 
                     <Form form={form} layout="vertical" requiredMark={false}>
                         <Card

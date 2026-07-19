@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { App, Button, Card, Form, Input, InputNumber, Spin, Switch } from "antd";
-import { Gauge, Save, Settings2, UserPlus } from "lucide-react";
+import { App, Button, Card, Form, Input, Spin, Switch } from "antd";
+import { Save, Settings2, UserPlus } from "lucide-react";
 
 import { fetchPlatformSettings, updatePlatformSettings, type PlatformSettings } from "@/services/api/admin";
 import { syncPlatformSettings } from "@/services/api/platform";
@@ -48,7 +48,7 @@ export default function AdminPlatformPage() {
                         站点基础配置
                     </div>
                     <h1 className="text-xl font-semibold text-stone-950 dark:text-stone-100">站点设置</h1>
-                    <p className="mt-1 text-sm text-stone-500">管理品牌信息、注册策略和渠道自动保护</p>
+                    <p className="mt-1 text-sm text-stone-500">管理品牌信息和用户注册策略</p>
                 </div>
                 <Button type="primary" icon={<Save className="size-4" />} loading={saving} onClick={() => void save()}>
                     保存设置
@@ -87,34 +87,9 @@ export default function AdminPlatformPage() {
                             </span>
                         }
                     >
-                        <div className="grid gap-x-4 sm:grid-cols-2">
-                            <Form.Item name="allowRegistration" label="开放注册" valuePropName="checked" extra="关闭后仅管理员可以创建账号。">
-                                <Switch checkedChildren="开放" unCheckedChildren="关闭" />
-                            </Form.Item>
-                            <Form.Item name="registerGrantCredits" label="注册赠送积分" extra="邮箱验证完成、正式账号创建后发放。">
-                                <InputNumber className="w-full" min={0} max={1_000_000_000} precision={0} addonAfter="积分" />
-                            </Form.Item>
-                        </div>
-                    </Card>
-
-                    <Card
-                        size="small"
-                        className="lg:col-span-2"
-                        title={
-                            <span className="inline-flex items-center gap-2">
-                                <Gauge className="size-4 text-sky-500" />
-                                渠道自动保护
-                            </span>
-                        }
-                    >
-                        <div className="grid items-start gap-x-6 lg:grid-cols-[minmax(0,1fr)_240px]">
-                            <Form.Item name="autoPauseEnabled" label="连续失败自动暂停" valuePropName="checked" extra="上游渠道连续异常时自动下线，避免持续失败、重复扣款与退款。">
-                                <Switch checkedChildren="已开启" unCheckedChildren="已关闭" />
-                            </Form.Item>
-                            <Form.Item name="autoPauseFailures" label="连续失败阈值">
-                                <InputNumber className="w-full" min={2} max={20} precision={0} addonAfter="次" />
-                            </Form.Item>
-                        </div>
+                        <Form.Item name="allowRegistration" label="开放注册" valuePropName="checked" extra="关闭后仅管理员可以创建账号。">
+                            <Switch checkedChildren="开放" unCheckedChildren="关闭" />
+                        </Form.Item>
                     </Card>
                 </Form>
             )}
