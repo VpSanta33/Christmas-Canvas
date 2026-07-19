@@ -124,13 +124,15 @@ docker compose up --build -d
 
 ### 已有数据库的首次部署
 
-如果复用了旧的 `pgdata` 数据卷，数据库中已经保存的 `platform_settings` 会优先于 `.env`。这意味着旧部署曾关闭注册或开启邮箱验证时，仅修改 Docker 配置不会覆盖已保存的平台策略。优先使用管理员账号进入“平台设置”和“邮箱服务”页面调整；如果还没有任何可登录的管理员账号，可先检查：
+如果复用了旧的 `pgdata` 数据卷，数据库中已经保存的 `platform_settings` 会优先于 `.env`。当前版本会在用户表为空时强制开放首次注册、跳过邮箱验证，并将首个账号设为管理员，遗留的平台设置不会再锁死初始化流程。
+
+当数据库中已经存在用户时，系统会继续执行管理员后台保存的注册与邮箱策略。如果没有任何可登录的管理员账号，可先检查用户数量和当前配置：
 
 ```bash
-docker compose exec postgres psql -U canvas -d canvas -c "SELECT configured, allow_registration, email_configured, email_verification_enabled FROM platform_settings WHERE id = 1;"
+docker compose exec postgres psql -U canvas -d canvas -c "SELECT (SELECT count(*) FROM users) AS users, configured, allow_registration, email_configured, email_verification_enabled FROM platform_settings WHERE id = 1;"
 ```
 
-确认是遗留的引导配置后，可恢复首次注册入口（不会删除用户、画布或媒体数据）：
+确认是遗留配置后，可重新开放注册并关闭邮箱验证（不会删除用户、画布或媒体数据）：
 
 ```bash
 docker compose exec postgres psql -U canvas -d canvas -c "UPDATE platform_settings SET allow_registration = true, email_configured = true, email_verification_enabled = false, updated_at = now() WHERE id = 1;"

@@ -28,3 +28,13 @@ func TestNormalizeSiteSettingsKeepsIndependentFields(t *testing.T) {
 		t.Fatalf("site settings not normalized: %#v", settings)
 	}
 }
+
+func TestApplyFirstUserDefaultsAllowsBootstrap(t *testing.T) {
+	settings := applyFirstUserDefaults(PublicSettings{
+		AllowRegistration:         false,
+		EmailVerificationRequired: true,
+	})
+	if !settings.AllowRegistration || settings.EmailVerificationRequired {
+		t.Fatalf("first user defaults not applied: %#v", settings)
+	}
+}

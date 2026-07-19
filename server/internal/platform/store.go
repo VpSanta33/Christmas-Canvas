@@ -102,6 +102,12 @@ func (s *Store) Public(ctx context.Context) (PublicSettings, error) {
 	}, nil
 }
 
+func (s *Store) HasUsers(ctx context.Context) (bool, error) {
+	var hasUsers bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users)`).Scan(&hasUsers)
+	return hasUsers, err
+}
+
 func (s *Store) Site(ctx context.Context) (SiteSettings, error) {
 	settings, err := s.Get(ctx)
 	if err != nil {

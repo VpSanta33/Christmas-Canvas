@@ -18,12 +18,28 @@ func (h *Handler) Public(c *gin.Context) {
 		httpx.Internal(c, err)
 		return
 	}
+	hasUsers, err := h.store.HasUsers(c.Request.Context())
+	if err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	if !hasUsers {
+		settings = applyFirstUserDefaults(settings)
+		c.JSON(http.StatusOK, settings)
+		return
+	}
 	settings.EmailVerificationRequired, err = h.store.EmailVerificationEnabled(c.Request.Context())
 	if err != nil {
 		httpx.Internal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, settings)
+}
+
+func applyFirstUserDefaults(settings PublicSettings) PublicSettings {
+	settings.AllowRegistration = true
+	settings.EmailVerificationRequired = false
+	return settings
 }
 
 func (h *Handler) AdminGet(c *gin.Context) {

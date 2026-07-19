@@ -81,6 +81,13 @@ type verificationRequiredResponse struct {
 }
 
 func (h *Handler) Register(c *gin.Context) {
+	userCount, err := h.store.CountUsers(c.Request.Context())
+	if err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	firstUser := userCount == 0
+
 	allowRegistration := h.allowRegistration
 	grantCredits := h.grantCredits
 	if h.policy != nil {
@@ -91,8 +98,8 @@ func (h *Handler) Register(c *gin.Context) {
 			return
 		}
 	}
-	if !allowRegistration {
-		httpx.Forbidden(c, "registration disabled")
+	if !firstUser && !allowRegistration {
+		httpx.FailCode(c, http.StatusForbidden, "registration_disabled", "平台暂未开放注册")
 		return
 	}
 	var req credentials
@@ -117,17 +124,20 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 	// 第一个注册用户自动成为 admin
 	role := "user"
-	if n, _ := h.store.CountUsers(c.Request.Context()); n == 0 {
+	if firstUser {
 		role = "admin"
 	}
 	name := req.DisplayName
 	if name == "" {
 		name = strings.Split(req.Email, "@")[0]
 	}
-	verificationEnabled, err := h.emailVerificationEnabled(c.Request.Context())
-	if err != nil {
-		httpx.Internal(c, err)
-		return
+	verificationEnabled := false
+	if !firstUser {
+		verificationEnabled, err = h.emailVerificationEnabled(c.Request.Context())
+		if err != nil {
+			httpx.Internal(c, err)
+			return
+		}
 	}
 	if verificationEnabled {
 		code, challengeToken, err := h.newRegistrationChallenge(c.Request.Context(), req.Email, hash, name)
