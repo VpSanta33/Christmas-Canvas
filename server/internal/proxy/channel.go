@@ -283,6 +283,9 @@ func normalizeChannelModelPricing(models []ChannelModel) []ChannelModel {
 	out := make([]ChannelModel, len(models))
 	copy(out, models)
 	for index := range out {
+		if isViraldanceModel(out[index].Name) {
+			out[index].Capability = "video"
+		}
 		if out[index].GenerationPricing == nil {
 			continue
 		}
@@ -290,6 +293,11 @@ func normalizeChannelModelPricing(models []ChannelModel) []ChannelModel {
 		out[index].GenerationPricing = &normalized
 	}
 	return out
+}
+
+func isViraldanceModel(name string) bool {
+	normalized := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(name))
+	return strings.Contains(normalized, "viraldance431") || strings.Contains(normalized, "viraldance900")
 }
 
 func validModelDefault(channels []PublicChannel, value, capability string) bool {

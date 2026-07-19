@@ -1,4 +1,5 @@
 import { isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceResolution } from "@/lib/seedance-video";
+import { normalizeViraldanceDuration, viraldanceProfile } from "@/lib/viraldance-video";
 import { decodeChannelModel, generationPricingForModel, modelCapabilityOf, modelOptionName, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, type AiConfig } from "@/stores/use-config-store";
 
 export function modelGenerationCost(config: AiConfig, value: string): number {
@@ -79,6 +80,12 @@ function normalizeVideoQuality(value: string): string {
 
 function normalizedVideoParameters(config: AiConfig, value: string): { quality: string; seconds: string } {
     const workbenchSeconds = normalizeWorkbenchVideoSeconds(config.videoSeconds);
+    if (viraldanceProfile(modelOptionName(value))) {
+        return {
+            quality: "720",
+            seconds: String(normalizeViraldanceDuration(workbenchSeconds)),
+        };
+    }
     if (!isSeedanceVideoConfig({ ...config, model: value, videoModel: value })) {
         return {
             quality: normalizeVideoQuality(config.vquality),

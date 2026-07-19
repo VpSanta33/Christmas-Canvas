@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import { API_BASE_URL, isBackendMode } from "@/constant/runtime-config";
+import { isViraldanceVideoModel } from "@/lib/viraldance-video";
 import { getAuthToken } from "@/stores/use-auth-store";
 
 export type ApiCallFormat = "openai" | "gemini";
@@ -63,6 +64,7 @@ export type AiConfig = {
     vquality: string;
     videoGenerateAudio: string;
     videoWatermark: string;
+    videoInputMode: string;
     systemPrompt: string;
     models: string[];
     quality: string;
@@ -120,6 +122,7 @@ export const defaultConfig: AiConfig = {
     vquality: "720",
     videoGenerateAudio: "true",
     videoWatermark: "false",
+    videoInputMode: "reference",
     systemPrompt: "",
     models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
     quality: "auto",
@@ -154,7 +157,7 @@ type ConfigStore = {
     clearPromptContinue: () => void;
 };
 
-const VIDEO_KEYWORDS = ["seedance", "video", "sora", "veo", "kling", "wan", "hailuo"];
+const VIDEO_KEYWORDS = ["seedance", "viraldance", "video", "sora", "veo", "kling", "wan", "hailuo"];
 const AUDIO_KEYWORDS = ["audio", "tts", "speech", "voice", "music", "sound"];
 const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "imagen", "flux", "sdxl", "stable-diffusion", "midjourney"];
 
@@ -303,6 +306,7 @@ export const useConfigStore = create<ConfigStore>()(
                         vquality: videoSelection.quality,
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
+                        videoInputMode: config.videoInputMode === "first-last" ? "first-last" : "reference",
                         canvasImageCount: config.canvasImageCount || "3",
                         generationPricing,
                     },
@@ -342,7 +346,7 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         const name = (typeof item === "string" ? item : item?.name || "").trim();
         if (!name || seen.has(name)) continue;
         seen.add(name);
-        const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
+        const capability = isViraldanceVideoModel(name) ? "video" : typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
         const cost = typeof item === "string" ? 0 : Math.max(0, Math.floor(Number(item.cost) || 0));
         const enabled = typeof item === "string" ? true : item.enabled !== false;
         const sortOrder = typeof item === "string" ? result.length : Math.max(0, Math.floor(Number(item.sortOrder) || 0));

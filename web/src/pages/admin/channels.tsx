@@ -81,7 +81,7 @@ function completeVideoPricingMatrix(pricing: GenerationPricing): GenerationPrici
 // 依模型名猜测能力，减少批量添加后逐个改能力的成本。
 function guessCapability(name: string): string {
     const n = name.toLowerCase();
-    if (/(sora|veo|video|kling|runway|wan)/.test(n)) return "video";
+    if (/(sora|veo|video|seedance|viraldance|kling|runway|wan)/.test(n)) return "video";
     if (/(tts|audio|speech|whisper|voice|music|suno)/.test(n)) return "audio";
     if (/(image|dall|flux|sd|stable|imagen|seedream|gpt-image|midjourney|mj)/.test(n)) return "image";
     return "text";

@@ -6,6 +6,7 @@ import { imageAspectOptions, imageQualityOptions } from "@/components/image-sett
 import { normalizeVideoResolutionValue, videoSizeOptions } from "@/components/video-settings-panel";
 import { configuredVideoDurations, configuredVideoQualities } from "@/lib/generation-cost";
 import { isSeedanceFastModel, isSeedanceVideoConfig, seedanceDurationOptions, seedanceResolutionOptions } from "@/lib/seedance-video";
+import { normalizeViraldanceDuration, viraldanceProfile } from "@/lib/viraldance-video";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { modelOptionLabel, modelOptionName, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig } from "@/stores/use-config-store";
@@ -185,15 +186,20 @@ function runVideoWorkbench(input: SiteToolInput, navigate: NavigateFunction) {
 
 function configuredVideoOptions(config: AiConfig) {
     let qualities = configuredVideoQualities(config);
+    const viraldance = viraldanceProfile(modelOptionName(config.model || config.videoModel));
     const seedance = isSeedanceVideoConfig(config);
-    if (seedance) {
+    if (viraldance) {
+        qualities = qualities.filter((quality) => quality === "720");
+    } else if (seedance) {
         const supported = new Set(seedanceResolutionOptions.map((item) => item.value.replace(/p$/, "")));
         qualities = qualities.filter((quality) => supported.has(quality) && !(quality === "1080" && isSeedanceFastModel(modelOptionName(config.model || config.videoModel))));
     }
     const normalizedQuality = normalizeVideoResolutionValue(config.vquality || "720");
     const currentQuality = qualities.includes(normalizedQuality) ? normalizedQuality : qualities[0] || normalizedQuality;
     let durations = configuredVideoDurations(config, currentQuality);
-    if (seedance) {
+    if (viraldance) {
+        durations = durations.filter((duration) => duration === normalizeViraldanceDuration(String(duration)));
+    } else if (seedance) {
         const supported = new Set<number>(seedanceDurationOptions);
         durations = durations.filter((duration) => supported.has(duration));
     } else {

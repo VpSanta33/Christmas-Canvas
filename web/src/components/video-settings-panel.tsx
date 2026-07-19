@@ -1,8 +1,9 @@
 import { useEffect, type ReactNode } from "react";
-import { Slider, Switch } from "antd";
+import { Segmented, Slider, Switch } from "antd";
 
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { boolConfig, isSeedanceFastModel, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedancePixelLabel, seedanceRatioOptions, seedanceResolutionOptions } from "@/lib/seedance-video";
+import { normalizeViraldanceDuration, normalizeViraldanceRatio, viraldanceProfile, viraldanceSizeForRatio } from "@/lib/viraldance-video";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { configuredVideoQualities } from "@/lib/generation-cost";
 import { modelOptionName, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, type AiConfig } from "@/stores/use-config-store";
@@ -20,17 +21,86 @@ export const videoSizeOptions = sizeOptions.map((item) => ({ value: item.value, 
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark", value: string) => void;
+    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoInputMode", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     className?: string;
 };
 
 export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
+    if (viraldanceProfile(modelOptionName(config.model || config.videoModel))) {
+        return <ViraldanceVideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
+    }
     if (isSeedanceVideoConfig(config)) {
         return <SeedanceVideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
     }
     return <GenericVideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
+}
+
+function ViraldanceVideoSettingsPanel({ config, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps) {
+    const model = modelOptionName(config.model || config.videoModel);
+    const profile = viraldanceProfile(model)!;
+    const ratio = normalizeViraldanceRatio(config.size, model);
+    const duration = normalizeViraldanceDuration(config.videoSeconds);
+
+    useEffect(() => {
+        if (normalizeVideoResolutionValue(config.vquality) !== "720") onConfigChange("vquality", "720");
+        if (config.size !== ratio) onConfigChange("size", ratio);
+        if (config.videoSeconds !== String(duration)) onConfigChange("videoSeconds", String(duration));
+        if (profile.variant === "900" && config.videoInputMode !== "reference") onConfigChange("videoInputMode", "reference");
+    }, [config.size, config.videoInputMode, config.videoSeconds, config.vquality, duration, onConfigChange, profile.variant, ratio]);
+
+    return (
+        <ImageSettingsTheme theme={theme}>
+            <div className={className} style={{ color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
+                {showTitle ? <div className="text-lg font-semibold">视频设置</div> : null}
+                <SettingGroup title="分辨率" color={theme.node.muted}>
+                    <div className="grid grid-cols-3 gap-2.5">
+                        <OptionPill selected theme={theme} onClick={() => onConfigChange("vquality", "720")}>
+                            720p
+                        </OptionPill>
+                    </div>
+                </SettingGroup>
+                <SettingGroup title="比例" color={theme.node.muted}>
+                    <div className="grid grid-cols-3 gap-2.5">
+                        {profile.ratios.map((item) => {
+                            const dimensions = readSizeDimensions(viraldanceSizeForRatio(item, model));
+                            return (
+                                <button
+                                    key={item}
+                                    type="button"
+                                    className="flex h-[68px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border bg-transparent px-1 text-sm transition hover:opacity-80"
+                                    style={{ borderColor: ratio === item ? theme.node.text : theme.node.stroke, color: theme.node.text }}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onClick={() => onConfigChange("size", item)}
+                                >
+                                    <SizePreview width={dimensions.width} height={dimensions.height} color={theme.node.text} />
+                                    <span>{item === "16:9" ? "横屏" : item === "9:16" ? "竖屏" : "方形"}</span>
+                                    <span className="text-[10px] leading-none opacity-55">{viraldanceSizeForRatio(item, model)}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </SettingGroup>
+                <SettingGroup title="时长" color={theme.node.muted}>
+                    <DurationSlider value={duration} min={4} max={VIDEO_SECONDS_MAX} theme={theme} onChange={(value) => onConfigChange("videoSeconds", String(value))} />
+                </SettingGroup>
+                {profile.variant === "431" ? (
+                    <SettingGroup title="图片模式" color={theme.node.muted}>
+                        <Segmented
+                            block
+                            value={config.videoInputMode === "first-last" ? "first-last" : "reference"}
+                            options={[
+                                { label: "素材参考", value: "reference" },
+                                { label: "首尾帧", value: "first-last" },
+                            ]}
+                            onChange={(value) => onConfigChange("videoInputMode", String(value))}
+                        />
+                    </SettingGroup>
+                ) : null}
+            </div>
+        </ImageSettingsTheme>
+    );
 }
 
 function GenericVideoSettingsPanel({ config, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps) {
@@ -171,7 +241,8 @@ export function videoSizeLabel(value: string) {
 }
 
 export function videoSecondsLabel(value: string, config?: AiConfig) {
-    return `${clampSeconds(value, config && isSeedanceVideoConfig(config) ? 4 : VIDEO_SECONDS_MIN)}s`;
+    const model = config ? modelOptionName(config.model || config.videoModel) : "";
+    return `${clampSeconds(value, config && (isSeedanceVideoConfig(config) || viraldanceProfile(model)) ? 4 : VIDEO_SECONDS_MIN)}s`;
 }
 
 export function normalizeVideoSizeValue(value: string) {

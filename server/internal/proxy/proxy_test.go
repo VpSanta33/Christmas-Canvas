@@ -66,6 +66,20 @@ func TestFindChannelModel(t *testing.T) {
 	}
 }
 
+func TestNormalizeChannelModelsRecognizesViraldance(t *testing.T) {
+	models := normalizeChannelModelPricing([]ChannelModel{
+		{Name: "viraldance431", Capability: "text"},
+		{Name: "viral-dance-900", Capability: "text"},
+		{Name: "custom-model", Capability: "text"},
+	})
+	if models[0].Capability != "video" || models[1].Capability != "video" {
+		t.Fatalf("Viraldance capabilities not normalized: %#v", models)
+	}
+	if models[2].Capability != "text" {
+		t.Fatalf("custom capability changed: %#v", models[2])
+	}
+}
+
 func TestValidModelDefault(t *testing.T) {
 	enabled := true
 	disabled := false
