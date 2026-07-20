@@ -3,7 +3,6 @@ package admin
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -88,61 +87,6 @@ func (h *Handler) MediaPreview(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "private, max-age=3600")
 	c.Data(http.StatusOK, ct, data)
-}
-
-// usageRecord 是一条 AI 调用记录（含成败与错误信息），供 admin 排障。
-type usageRecord struct {
-	ID           int64  `json:"id"`
-	Capability   string `json:"capability"`
-	ChannelID    string `json:"channelId"`
-	Model        string `json:"model"`
-	Status       string `json:"status"`
-	HTTPStatus   int    `json:"httpStatus"`
-	ErrorMessage string `json:"errorMessage"`
-	CreatedAt    string `json:"createdAt"`
-}
-
-// UserUsage 返回指定用户最近的 AI 调用记录；onlyErrors=1 时只返回失败记录，便于问题定位。
-func (h *Handler) UserUsage(c *gin.Context) {
-	id := c.Param("id")
-	if _, err := h.users.FindByID(c.Request.Context(), id); err != nil {
-		if errors.Is(err, auth.ErrNotFound) {
-			httpx.NotFound(c, "user not found")
-			return
-		}
-		httpx.Internal(c, err)
-		return
-	}
-	limit, _ := strconv.Atoi(c.Query("limit"))
-	if limit <= 0 || limit > 500 {
-		limit = 100
-	}
-	onlyErrors := c.Query("onlyErrors") == "1" || c.Query("onlyErrors") == "true"
-	q := `SELECT id, capability, COALESCE(channel_id::text, ''), model, status, http_status, error_message, created_at
-	      FROM usage_records WHERE user_id = $1`
-	if onlyErrors {
-		q += ` AND status = 'error'`
-	}
-	q += ` ORDER BY created_at DESC LIMIT $2`
-	rows, err := h.pool.Query(c.Request.Context(), q, id, limit)
-	if err != nil {
-		httpx.Internal(c, err)
-		return
-	}
-	defer rows.Close()
-	items := []usageRecord{}
-	for rows.Next() {
-		var r usageRecord
-		var created time.Time
-		if err := rows.Scan(&r.ID, &r.Capability, &r.ChannelID, &r.Model, &r.Status,
-			&r.HTTPStatus, &r.ErrorMessage, &created); err != nil {
-			httpx.Internal(c, err)
-			return
-		}
-		r.CreatedAt = created.Format(time.RFC3339)
-		items = append(items, r)
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // kindFromStorageKey 从前端语义键前缀推断媒体类型（image:xxx → image）。

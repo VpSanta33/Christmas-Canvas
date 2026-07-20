@@ -30,10 +30,10 @@ type Config struct {
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
 
-	// 渠道 API Key 加密（AES-256-GCM，32 字节，hex 编码）
+	// 后台 SMTP/S3 敏感配置加密（AES-256-GCM，32 字节，hex 编码）。
 	ChannelEncKey []byte
 
-	// 管理员后台尚未配置时使用的可选 MinIO / S3 回退值
+	// 管理员后台尚未配置时使用的可选 S3 兼容服务回退值
 	S3Endpoint        string
 	S3AccessKey       string
 	S3SecretKey       string
@@ -52,9 +52,6 @@ type Config struct {
 
 	// 开放注册开关
 	AllowRegistration bool
-
-	// 新用户注册时赠送的初始积分
-	RegisterGrantCredits int64
 
 	// 管理员后台尚未配置时使用的可选 SMTP 回退值
 	EmailVerificationEnabled  bool
@@ -107,7 +104,6 @@ func Load() (*Config, error) {
 		}
 	}
 
-	cfg.RegisterGrantCredits = int64(envInt("REGISTER_GRANT_CREDITS", 100))
 	cfg.RedisDB = envInt("REDIS_DB", 0)
 	cfg.AccessTTL = envDuration("ACCESS_TOKEN_TTL", time.Hour)
 	cfg.RefreshTTL = envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour)
@@ -119,6 +115,12 @@ func Load() (*Config, error) {
 	if secret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
+	if len([]byte(secret)) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 bytes")
+	}
+	if secret == "change-me-in-production-at-least-32-bytes" || secret == "change-me-in-prod-please-32chars-min" {
+		return nil, fmt.Errorf("JWT_SECRET uses a default value; generate a random secret")
+	}
 	cfg.JWTSecret = []byte(secret)
 
 	encHex := env("CHANNEL_ENC_KEY", "")
@@ -128,6 +130,9 @@ func Load() (*Config, error) {
 	key, err := hex.DecodeString(encHex)
 	if err != nil || len(key) != 32 {
 		return nil, fmt.Errorf("CHANNEL_ENC_KEY must be 64 hex chars (32 bytes)")
+	}
+	if encHex == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
+		return nil, fmt.Errorf("CHANNEL_ENC_KEY uses a default value; generate a random key")
 	}
 	cfg.ChannelEncKey = key
 

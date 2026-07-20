@@ -219,7 +219,7 @@ export function ContestSubmitModal({ open, onClose, onSuccess }: ContestSubmitMo
                 </label>
 
                 <div className="flex items-center justify-between gap-4 border-t border-stone-200 pt-4 dark:border-stone-800">
-                    <p className="text-xs leading-5 text-stone-500">发布后需经管理员审核方可展示。观众可查看并直接使用你的创作配方；点赞不会自动发放积分，奖励由管理员参考人气统一结算。</p>
+                    <p className="text-xs leading-5 text-stone-500">发布后需经管理员审核方可展示。观众可查看并直接使用你的创作配方，点赞用于社区排序。</p>
                     <div className="flex shrink-0 gap-2">
                         <Button onClick={close} disabled={submitting}>
                             取消

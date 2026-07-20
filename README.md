@@ -1,281 +1,187 @@
-<p align="center">
-  <img src="web/public/logo.svg" width="96" alt="圣诞AI画布 logo">
-</p>
+# 圣诞AI画布
 
-<h1 align="center">圣诞AI画布</h1>
+基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发的 BYOK 多媒体 AI 创作画布。
 
-<p align="center">
-  面向 AI 图片、视频与多媒体创作的开源 AI 画布工作台
-</p>
+圣诞AI画布把无限画布、图片/视频/音频创作台、个人模型配置、素材库和团队工作空间放在一个可自托管的应用中。用户在浏览器中自行填写模型调用 URL、API Key 和模型名称，浏览器直接调用用户选择的上游服务；平台只负责账号、画布、媒体存储、任务记录、分享、模板、协作与可选的邮箱/S3 配置。
 
-圣诞AI画布是基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发的 AI 创作工作台。项目把模型调用、素材管理和可视化工作流放进同一个创作空间，既可以让用户在浏览器中填写自己的 API URL 与 Key，也可以接入仓库内置的 Go 后端，获得账号、可选的平台 AI 渠道、对象存储、创作者社区和管理后台能力。
+## 设计边界
 
-当前仓库默认面向自托管部署，执行 `docker compose up --build -d` 即可启动完整的 Web、API 和数据服务。
+- **用户自己配置模型**：个人 API URL、Key 和模型保存在当前浏览器，服务端不代理模型请求，也不保存个人 AI Key。
+- **平台不做计费**：已移除平台渠道、积分、注册赠送、AI 配额、失败退款和管理员渠道管理接口。
+- **不部署 MinIO**：Docker 只启动 Web、Go API、PostgreSQL 和 Redis。对象存储是可选能力，由管理员登录后台后配置任意 S3 兼容服务。
+- **保留业务能力**：账号注册、邮箱验证、画布/资产、任务中心、版本、分享复制、模板、通知、团队、创作者社区和后台审计继续保留。
 
-> [!IMPORTANT]
-> 项目仍在快速迭代，数据结构和部署配置可能发生变化。升级前请备份 PostgreSQL 数据卷、已配置的对象存储以及浏览器本地数据。
+## 功能
 
-## 功能概览
+### 创作与模型
 
-### 无限画布
-
-- 多画布项目管理，支持节点拖拽、缩放、连线、框选、分组、小地图、撤销与重做。
-- 内置文本、图片、视频、音频、生成配置和组节点。
-- 图片裁剪、切图、蒙版编辑、放大和角度调整等画布内工具。
-- 画布、素材和媒体文件的导入导出，以及 WebDAV 数据同步。
-
-### AI 创作
-
-- 独立的图片与视频工作台，以及画布节点内的图片、视频、音频和文本生成。
-- 支持参考图片、参考视频、参考音频、生成参数和历史记录。
-- 原生兼容 `viraldance431` 与 `viraldance900`：保留 `/v1/videos` JSON 参数、任务状态和顶层 `url` 响应协议，并支持 431 首尾帧与多模态素材引用。
-- 支持 OpenAI 兼容格式与 Gemini 格式渠道，并允许通过自定义请求脚本适配其他服务。
-- 用户可以添加多个个人渠道，API URL 与 Key 仅保存在当前浏览器，由浏览器直接请求上游服务。
-- 管理员仍可按需提供平台渠道；平台渠道由服务端注入密钥，支持 SSE、渠道优先级、故障转移、健康检测和自动暂停。
-
-### 平台与社区
-
-- 邮箱注册、验证码、JWT 登录、刷新令牌、会话撤销和登录防爆破。
-- 注册赠送积分、按模型/能力计费、积分流水、每日配额和失败退款。
-- 创作者主页、关注、作品流、收藏、点赞和创作大赛投稿。
-- 大赛审核、精选、积分结算，以及作品画布快照和创作配方展示。
+- 无限画布：节点、连线、分组、缩放、框选、撤销/重做、图片/视频/音频/文本/配置节点。
+- 图片工作台：文生图、图像编辑、参考图、批量生成、历史记录和结果对比。
+- 视频创作台：异步任务创建与轮询、参考图片/视频/音频、任务失败重试。
+- 兼容 OpenAI 风格、Gemini 风格以及 `viraldance431`、`viraldance900` 等自定义模型接口，保留历史参数兼容性。
+- 多个人 API 配置：每个渠道单独填写 Base URL、Key、格式和模型能力。
 
 ### 工作空间
 
-- 统一任务中心：汇总图片/视频生成历史，支持状态和关键词筛选、一键复用、批量生成入口和多任务结果对比。
-- 画布版本与分享：保存快照、恢复历史版本、生成查看/复制链接，并可把项目绑定到团队空间。
-- 素材管理：按标题、内容、来源和标签搜索，支持标签维护与收藏筛选。
-- 工作流模板：从当前画布保存模板，搜索并复制模板为新画布。
-- 通知与团队：查看系统通知、批量标记已读，创建团队、添加成员、设置编辑/只读角色。
-
-工作空间的服务端接口位于 `/api/tasks`、`/api/projects/:id/versions`、`/api/projects/:id/shares`、`/api/templates`、`/api/notifications` 和 `/api/teams`。团队成员通过权限控制共享画布；当前版本采用保存/拉取同步，尚未引入实时光标和 WebSocket 冲突合并。
+- 统一任务中心：图片/视频任务历史、关键词和状态筛选、视频结果预览、一键复用和多任务对比。
+- 画布版本：保存快照、查看历史版本、恢复版本。
+- 分享与复制：公开查看/复制链接；分享页面直接预览快照里的图片、视频和音频。
+- 工作流模板：私有、团队和公开可见性，搜索、复用和媒体访问授权。
+- 团队空间：`owner`、`editor`、`viewer` 三种角色；编辑者可以保存团队画布，查看者只读。
+- 通知中心、素材标签/收藏、媒体回收站、创作者社区和作品审核。
 
 ### 管理后台
 
-- `operator`：查看平台概览、调用记录、渠道健康、用量统计和大赛审核。
-- `admin`：在 operator 能力之外管理用户、角色、积分、模型渠道、平台设置、公告、邮件、对象存储、安全审计和文件清理。
-- 渠道密钥与后台保存的 SMTP/S3 密钥使用 `CHANNEL_ENC_KEY` 加密后入库，不向前端返回明文。
-
-### 节点插件
-
-- 支持从 URL 安装、启用、更新和卸载第三方画布节点插件。
-- 提供 TypeScript SDK、构建工具和插件模板。
-- 仓库包含 Markdown、SVG、HTML、3D 全景和便利贴等示例插件。
-
-插件开发说明见 [`plugins/canvas/README.md`](plugins/canvas/README.md)。第三方插件会在页面上下文中执行，只应安装可信来源。
+- 用户、角色、禁用状态、会话撤销和安全审计。
+- 站点名称、Logo、注册开关和公告维护。
+- SMTP 邮箱配置：后台保存，敏感密码使用加密密钥加密入库。
+- S3 兼容对象存储配置：后台保存和连接测试，支持图片、视频、音频等媒体持久化。
+- 创作者社区审核、精选、作品媒体预览和创作配方展示。
 
 ## 运行模式
 
-| 模式 | 适用场景 | 数据与密钥 | 后端能力 |
+| 模式 | 适合场景 | 数据位置 | AI 调用 |
 | --- | --- | --- | --- |
-| `local` | 个人使用、快速体验、离线画布 | 画布、素材和个人模型配置保存在浏览器；浏览器直接请求配置的模型服务 | 不需要账号；无积分、社区和管理后台 |
-| `backend` | 自托管平台、多人使用 | 业务数据进入 PostgreSQL；个人 API Key 仍只在各自浏览器中；管理员可额外提供平台渠道 | 账号、社区、赛事、后台管理，以及可选的平台积分与 AI 代理 |
+| `local` | 个人使用、快速体验、离线工作 | 浏览器 localForage | 浏览器直连用户填写的 API |
+| `backend` | 自托管、多设备、团队协作 | PostgreSQL + 可选 S3 | 浏览器直连用户填写的 API |
 
-前端通过 `APP_MODE`（容器运行时）或 `VITE_APP_MODE`（构建/开发时）选择模式。backend 模式默认使用同源 `/api`，也可以通过 `API_BASE_URL` 或 `VITE_API_BASE_URL` 指向独立后端。
-
-### 个人 API（BYOK）
-
-打开页面右上角的设置按钮，在“渠道”中填写调用 URL、API Key 和模型。个人渠道与平台渠道会同时出现在模型选择器中，两者的调用路径彼此独立：
-
-- **个人渠道**：浏览器直接请求用户填写的 URL，不经过圣诞AI画布后端，不消耗平台积分。
-- **平台渠道**：登录后通过 `/api/ai/:channelId` 请求，由服务端注入管理员保存的 Key，并执行平台计费与限流。
-- **本地密钥**：个人 API Key 只写入当前浏览器的 `localStorage`，不会进入账号数据、云端同步或 WebDAV 清单；清除站点数据后需要重新填写。
-- **跨域要求**：个人 API 必须允许部署站点的 Origin、请求方法和 `Authorization` / `x-goog-api-key` 等请求头。HTTPS 页面不能直连 HTTP API，否则会被浏览器的混合内容策略拦截。
-
-如果上游没有模型列表接口，可在渠道编辑器中手动增加模型名称并指定能力。调用 URL 可以填写服务根地址或包含 `/v1` 的 OpenAI 兼容地址，应用会自动规范化常见路径。
-
-## 系统架构
-
-```text
-Browser
-  |
-  +---- personal API URL/Key ------------------------> AI provider (CORS required)
-  |
-  v
-Nginx :3000  ---- static files ----> React / Vite application
-  |
-  +---- /api/* ----> Go / Gin API :8080
-                         |---- PostgreSQL: users, projects, assets, credits, settings
-                         |---- Redis: rate limits and login protection
-                         |---- Optional S3-compatible storage: images, videos and uploaded files
-                         +---- Optional platform AI channels: proxy and credential injection
-```
-
-| 目录 | 主要职责 | 技术 |
-| --- | --- | --- |
-| `web/` | 画布、创作台、社区和管理后台 | React 19、Vite 7、React Router 7、Zustand、Ant Design 6、Tailwind CSS 4、localForage |
-| `server/cmd/api/` | API 入口、依赖装配和优雅停机 | Go 1.26 |
-| `server/internal/` | auth、credits、proxy、storage、contest、admin 等领域模块 | Gin、pgx、JWT、bcrypt、go-redis、minio-go |
-| `server/internal/db/migrations/` | 启动时自动执行的数据库迁移 | PostgreSQL、golang-migrate |
-| `plugins/canvas/` | 节点插件、SDK、模板和官方插件注册表 | TypeScript、esbuild |
+backend 模式不会把个人 API Key 同步到 PostgreSQL、WebDAV 或任务记录。任务中心只保存提示词、模型、配置摘要、状态和媒体 `storageKey`。
 
 ## Docker 一键部署
 
-根目录 Compose 默认以 backend 模式启动完整环境：前端、API、PostgreSQL 和 Redis。SMTP、对象存储和平台 AI 渠道都不是启动前置条件，首次部署默认关闭；第一个注册用户自动成为管理员，登录后台后再按需配置这些平台能力。普通用户可以直接在浏览器中填写自己的 API URL 与 Key，不需要管理员先配置 AI Key。默认开发配置内置了可运行的基础设施密钥，因此不创建 `.env` 也可以直接启动；生产环境必须先创建 `.env` 并替换所有默认凭据。
+环境要求：Docker Engine 或 Docker Desktop，以及 Docker Compose v2。
 
 ```bash
+git clone https://github.com/VpSanta33/Christmas-Canvas.git
+cd Christmas-Canvas
+./deploy.sh
+```
+
+脚本会在没有 `.env` 时生成随机的 PostgreSQL、Redis、JWT 和后台敏感配置加密密钥，然后构建并启动容器。访问 <http://localhost:3000>，健康检查为 <http://localhost:3000/healthz>。
+
+也可以手动执行：
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写随机密码和密钥
 docker compose up --build -d
 docker compose ps
 ```
 
-生产或自定义部署使用：
+首次部署时，数据库为空的第一个注册用户会自动成为管理员。登录后进入管理后台，按需配置邮箱和 S3 兼容对象存储；不配置这两项也不影响账号、画布和用户直连 AI。Docker Compose 不包含 MinIO，也不会因为没有 S3 服务而启动失败。
+
+已有部署升级：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，至少替换 JWT_SECRET、CHANNEL_ENC_KEY、数据库和 Redis 凭据
-docker compose up --build -d
+git pull --ff-only origin main
+./deploy.sh
+docker compose logs -f --tail=100 api
 ```
 
-启动后可访问：
+`docker compose down` 不会删除数据卷。除非确认数据已备份，否则不要使用 `docker compose down -v`。升级前建议备份 PostgreSQL 卷和已配置的 S3 数据。
 
-| 服务 | 地址 | 说明 |
-| --- | --- | --- |
-| Web | <http://localhost:3000> | 主应用与管理后台 |
-| Health | <http://localhost:3000/healthz> | 应返回 `{"ok":true}` |
+## 个人 API 配置
 
-首次部署默认关闭邮箱验证和对象存储，注册不需要邮箱验证码、S3 凭据或 AI API Key。第一个注册用户会自动成为 `admin`，可从 `/admin` 配置可选的平台 AI 渠道、平台参数、SMTP 邮箱和 S3 兼容对象存储。后台配置会保存到 PostgreSQL，并使用 `CHANNEL_ENC_KEY` 加密敏感密钥。
+登录或进入应用后，打开右上角设置：
 
-对象存储关闭时，账号、画布、资产、个人 API 直连和平台 AI 代理仍可使用；需要跨设备持久化媒体文件时，再在后台启用并测试 S3/MinIO/其他兼容服务。
+1. 新建个人渠道。
+2. 填写上游 API URL、API Key、请求格式和模型名称。
+3. 为模型选择 `image`、`video`、`text` 或 `audio` 能力。
+4. 在工作台选择对应模型并开始生成。
 
-### 已有数据库的首次部署
+模型服务必须允许部署站点的浏览器 Origin、对应 HTTP 方法和 `Authorization` / `x-goog-api-key` 请求头。HTTPS 页面不能调用 HTTP 上游。模型 API Key 不会发送到圣诞AI画布后端。
 
-如果复用了旧的 `pgdata` 数据卷，数据库中已经保存的 `platform_settings` 会优先于 `.env`。当前版本会在用户表为空时强制开放首次注册、跳过邮箱验证，并将首个账号设为管理员，遗留的平台设置不会再锁死初始化流程。
+## 架构
 
-当数据库中已经存在用户时，系统会继续执行管理员后台保存的注册与邮箱策略。如果没有任何可登录的管理员账号，可先检查用户数量和当前配置：
-
-```bash
-docker compose exec postgres psql -U canvas -d canvas -c "SELECT (SELECT count(*) FROM users) AS users, configured, allow_registration, email_configured, email_verification_enabled FROM platform_settings WHERE id = 1;"
+```text
+Browser
+  | \
+  |  +---- personal API URL + Key ----> 用户选择的模型服务（需要 CORS）
+  |
+  +---- Nginx :3000 ---- React/Vite
+              |
+              +---- /api/* ---- Go/Gin :8080
+                                  |---- PostgreSQL：账号、画布、任务、团队、设置
+                                  |---- Redis：登录防爆破和请求限流
+                                  +---- 可选 S3：媒体文件
 ```
 
-确认是遗留配置后，可重新开放注册并关闭邮箱验证（不会删除用户、画布或媒体数据）：
+| 目录 | 内容 |
+| --- | --- |
+| `web/` | React 前端、无限画布、创作台、工作空间和管理页面 |
+| `server/cmd/api/` | Go API 入口和依赖装配 |
+| `server/internal/auth/` | 注册、登录、邮箱验证、会话管理 |
+| `server/internal/canvas/` | 画布项目和团队项目权限 |
+| `server/internal/workspace/` | 任务、版本、分享、模板、通知、团队 |
+| `server/internal/storage/` | S3 兼容对象存储和后台配置 |
+| `server/internal/db/migrations/` | 启动时自动执行的 PostgreSQL 迁移 |
 
-```bash
-docker compose exec postgres psql -U canvas -d canvas -c "UPDATE platform_settings SET configured = true, allow_registration = true, email_configured = true, email_verification_enabled = false, updated_at = now() WHERE id = 1;"
-docker compose up -d --build api app
-```
-
-上面的 `canvas` 用户名和数据库名需与 `.env` 中的 `POSTGRES_USER`、`POSTGRES_DB` 一致。注册接口本身不需要 AI API Key；如页面仍显示旧的鉴权提示，请先重新构建 Web 和 API 容器并查看 `docker compose logs -f api app`。
-
-如果公开配置显示 `allowRegistration: true`、用户数为 `0`，但注册请求仍在几十微秒内返回无响应正文的 `403`，通常是部署地址未被 CORS 允许。更新到最新镜像后，内置 Nginx 会保留带端口的 Host，直接访问 `http://服务器地址:3000` 可正常注册。使用独立域名或外部反向代理时，还应在 `.env` 中填写完整来源（不含路径），例如 `CORS_ORIGINS=https://canvas.example.com`，然后重新创建 API 容器。
-
-查看日志和停止服务：
-
-```bash
-docker compose logs -f api app
-docker compose down
-```
-
-`docker compose down` 保留 PostgreSQL 和 Redis 数据卷；后台配置的对象存储不由 Compose 管理。确认不再需要数据时才使用 `docker compose down -v`。
-
-### 仅运行本地模式
-
-纯前端模式不启动 API 和基础设施，适合个人使用：
-
-```bash
-docker compose -f docker-compose.local.yml up --build -d
-```
-
-打开 <http://localhost:3000> 后，在右上角设置中填写自己的模型调用 URL 和 API Key。数据与密钥默认保存在当前浏览器中，上游接口同样需要允许浏览器跨域访问。
+旧版本的平台渠道、积分和用量迁移文件会保留用于升级兼容，但新版本运行时不再挂载对应 API；媒体跨用户访问由 `file_access_grants` 进行最小授权。
 
 ## 本地开发
 
-### 环境要求
+```bash
+cd web
+bun install
+bun run dev
+```
 
-- 前端：Bun 1.3+（也可使用兼容的 Node.js 包管理流程）
-- 后端：Go 1.26+
-- 基础设施：Docker Engine 与 Docker Compose
-
-### 启动后端依赖
+纯前端模式使用 `VITE_APP_MODE=local`。接入本地 Go API 时设置 `VITE_APP_MODE=backend` 和 `VITE_API_BASE_URL=http://localhost:8080/api`。
 
 ```bash
 cd server
 docker compose up -d postgres redis
 cp .env.example .env
+# 修改 DATABASE_URL、JWT_SECRET、CHANNEL_ENC_KEY 和 CORS_ORIGINS
 go run ./cmd/api
 ```
 
-后端默认监听 <http://localhost:8080>，启动时会自动执行 `server/internal/db/migrations/` 中的迁移。此开发流程默认不启动 SMTP 或对象存储服务；需要时直接在管理员后台配置外部服务。
-
-### 启动前端
+常用检查：
 
 ```bash
-cd web
-cp .env.example .env
-bun install
-bun run dev
+cd server && GOCACHE=/tmp/christmas-canvas-go-build go test ./...
+cd ../web && bun run typecheck && bun run build
 ```
 
-`web/.env` 的典型配置：
+## 关键环境变量
 
-```dotenv
-# 纯前端模式
-VITE_APP_MODE=local
-VITE_API_BASE_URL=/api
+| 变量 | 说明 |
+| --- | --- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Compose 数据库账号；生产环境必须使用随机密码 |
+| `REDIS_PASSWORD` | Redis 密码；Compose 会用同一密码启动 Redis 和 API |
+| `JWT_SECRET` | 至少 32 字节的随机 JWT 密钥 |
+| `CHANNEL_ENC_KEY` | 64 位 hex；用于加密后台 SMTP/S3 密钥，不能丢失 |
+| `CORS_ORIGINS` | 允许访问 API 的前端 Origin，多个值用逗号分隔 |
+| `ALLOW_REGISTRATION` | 数据库尚未保存站点设置时的注册回退值 |
+| `WEB_PORT` | Web 暴露端口，默认 `3000` |
+| `ANALYTICS_GA4_ID` / `ANALYTICS_BAIDU_ID` | 可选统计 ID，留空关闭统计 |
 
-# 接入本地 Go 后端时改为：
-# VITE_APP_MODE=backend
-# VITE_API_BASE_URL=http://localhost:8080/api
-```
-
-开发服务器地址为 <http://localhost:3000>。使用独立后端地址时，应确保后端 `CORS_ORIGINS` 包含该前端来源。
-
-### 常用检查
-
-```bash
-cd web
-bun run typecheck
-bun run lint
-bun run build
-
-cd ../server
-go test ./...
-```
-
-## 关键配置
-
-| 变量 | 默认值/要求 | 作用 |
-| --- | --- | --- |
-| `JWT_SECRET` | 必填；启用邮箱验证时至少 32 字节 | 签发 JWT，并参与验证码摘要计算 |
-| `CHANNEL_ENC_KEY` | 必填；64 位 hex（32 字节） | AES-256-GCM 加密渠道、SMTP 和对象存储密钥 |
-| `DATABASE_URL` | PostgreSQL DSN | 后端业务数据与迁移目标 |
-| `REDIS_ADDR` | `redis:6379`（Compose） | 限流、每日配额与登录保护；不可用时相关限流会 fail-open |
-| `S3_*` / `STORAGE_*` | 可选；默认关闭 | 仅作为管理员后台尚未配置时的对象存储回退值，通常不需要写入 Docker 配置 |
-| `ALLOW_REGISTRATION` | `true` | 是否开放用户自助注册 |
-| `REGISTER_GRANT_CREDITS` | `100` | 新用户完成注册后赠送积分 |
-| `EMAIL_VERIFICATION_ENABLED` | Compose 默认为 `false` | 仅作为后台尚未配置时的邮箱验证回退值；正式配置请使用管理员后台 |
-| `SMTP_*` | 可选 | 仅作为后台尚未配置时的 SMTP 回退值；邮箱密码不需要写入 Docker 配置 |
-| `CORS_ORIGINS` | `http://localhost:3000` | 允许访问 API 的前端来源，多个值用逗号分隔 |
-| `ANALYTICS_GA4_ID` / `ANALYTICS_BAIDU_ID` | 空 | 可选统计 ID，留空不会加载对应统计脚本 |
-
-后端完整变量模板见 [`server/.env.example`](server/.env.example)。多数平台设置可由超级管理员在后台修改；环境变量仍作为首次启动和数据库未配置时的回退值。
-
-## 生产部署注意事项
-
-1. 使用密码管理器或密钥服务生成并保存独立的 `JWT_SECRET` 与 `CHANNEL_ENC_KEY`；`CHANNEL_ENC_KEY` 可用 `openssl rand -hex 32` 生成，已加密数据不能在丢失旧密钥后恢复。
-2. 替换 PostgreSQL 和 Redis 的默认凭据，不要将数据库或 Redis 直接暴露到公网。
-3. 使用 HTTPS 反向代理公开 Web 服务，并把后端 `CORS_ORIGINS` 限制为实际站点来源；个人 API 上游也必须单独允许该站点 Origin。
-4. 首次登录后，在管理员后台配置真实 SMTP 和对象存储；启用邮箱验证前先使用“发送测试邮件”验证 SMTP，启用对象存储前先执行连接测试。
-5. 为 PostgreSQL 和已启用的对象存储建立备份策略；升级前先备份数据卷并阅读 [`CHANGELOG.md`](CHANGELOG.md)。
-6. 插件代码拥有页面上下文权限，平台运营方应控制官方插件源并审核第三方插件。
+邮箱和对象存储的业务配置不需要写入 Compose `.env`，由超级管理员登录后台配置。`CHANNEL_ENC_KEY` 只是数据库加密密钥，不是模型 API Key。
 
 ## API 概览
 
-所有业务接口位于 `/api`。除公开平台信息、作品展示和认证端点外，其余接口均要求 Bearer Token。
+公开接口：`/healthz`、`/api/platform`、`/api/showcase`、`/api/shared/:token` 和分享媒体端点。
 
-| 路径 | 说明 |
-| --- | --- |
-| `/api/auth/*` | 注册、邮箱验证、登录、刷新、当前用户和退出 |
-| `/api/projects` | 用户画布项目列表、替换、写入和删除 |
-| `/api/assets` | 用户素材列表、替换、写入和删除 |
-| `/api/files/*` | 鉴权媒体上传、下载和回收站删除 |
-| `/api/channels` | 可选的平台渠道、默认模型和计费目录，不返回 API Key；个人渠道不经过此接口 |
-| `/api/ai/:channelId/*` | 仅用于平台渠道的 AI 请求代理、密钥注入、限流、计费和故障转移 |
-| `/api/credits/*` | 用户积分余额与流水 |
-| `/api/contest/*`、`/api/creators/*` | 大赛、作品、关注、收藏和创作者页面 |
-| `/api/admin/*` | 渠道、用户、平台、存储、安全、审计和运营管理 |
+登录后接口：
 
-健康检查不在 `/api` 下：`GET /healthz`。
+- `/api/auth/*`：注册、验证、登录、刷新和退出。
+- `/api/projects`、`/api/assets`、`/api/files/*`：画布、资产和媒体。
+- `/api/tasks`：任务历史和状态同步。
+- `/api/projects/:id/versions`、`/api/projects/:id/shares`：版本和分享。
+- `/api/templates`、`/api/notifications`、`/api/teams`：模板、通知和团队。
+- `/api/contest/*`、`/api/creators/*`：创作者社区。
+- `/api/admin/*`：管理员用户、站点、邮箱、S3、审计和社区审核。
+
+平台不提供 `/api/channels`、`/api/ai/*`、`/api/credits/*`、平台 AI 用量和积分接口。模型请求不会经过本项目后端。
+
+## 安全提示
+
+- 使用 HTTPS 和实际域名配置 `CORS_ORIGINS`，不要在公网暴露 PostgreSQL 或 Redis。
+- 不要提交 `.env`、个人 API Key、SMTP 密码或 S3 SecretKey。
+- 第一个注册用户自动成为管理员，部署后应立即登录并确认管理员账号安全。
+- 第三方画布插件在页面上下文执行，只有在信任插件来源时才安装。
+- `CHANNEL_ENC_KEY` 丢失后无法解密后台已经保存的 SMTP/S3 密钥。
 
 ## 开源协议
 
-本项目采用 [GNU Affero General Public License v3.0](LICENSE)。通过网络向用户提供修改后的版本时，请遵守 AGPL-3.0 对源代码公开的要求。
+本项目采用 [GNU Affero General Public License v3.0](LICENSE)。本项目基于 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas) 进行二次开发。

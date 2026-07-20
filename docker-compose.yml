@@ -35,26 +35,25 @@ services:
         condition: service_healthy
     environment:
       APP_ADDR: ":8080"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-canvas}:${POSTGRES_PASSWORD:-canvas}@postgres:5432/${POSTGRES_DB:-canvas}?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required; leave empty only for local development}
       REDIS_DB: ${REDIS_DB:-0}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-at-least-32-bytes}
-      CHANNEL_ENC_KEY: ${CHANNEL_ENC_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required; run ./deploy.sh to generate it}
+      CHANNEL_ENC_KEY: ${CHANNEL_ENC_KEY:?CHANNEL_ENC_KEY is required; run ./deploy.sh to generate it}
       ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-1h}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-720h}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       # 邮箱和对象存储由管理员登录后台后配置，首次启动不依赖 SMTP/S3 服务。
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
-      REGISTER_GRANT_CREDITS: ${REGISTER_GRANT_CREDITS:-100}
     restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-canvas}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-canvas}
-      POSTGRES_DB: ${POSTGRES_DB:-canvas}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -66,11 +65,16 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required; leave empty only for local development}
+    command: >-
+      sh -c 'if [ -n "$${REDIS_PASSWORD}" ]; then
+      exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}";
+      else exec redis-server --appendonly yes; fi'
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$${REDIS_PASSWORD}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi"]
       interval: 5s
       timeout: 3s
       retries: 20

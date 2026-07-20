@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import type { ReferenceImage } from "@/types/image";
+import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
 // Agent 面板通过该 store 向生图/视频工作台派发命令：设置提示词、并可选自动点击生成。
 // 参数（模型/质量/尺寸/张数等）由 Agent 面板直接写入 use-config-store，工作台页面从 config 读取；
@@ -8,6 +10,10 @@ export type WorkbenchCommand = {
     nonce: number;
     prompt?: string;
     attachments?: File[];
+    references?: ReferenceImage[];
+    videoReferences?: ReferenceVideo[];
+    audioReferences?: ReferenceAudio[];
+    batchPrompts?: string[];
     run: boolean;
 };
 

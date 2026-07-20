@@ -19,14 +19,14 @@ const providerOptions = [
     { label: "阿里云 OSS", value: "aliyun" },
     { label: "腾讯云 COS", value: "tencent" },
     { label: "AWS S3", value: "aws" },
-    { label: "MinIO / S3 兼容", value: "minio" },
+    { label: "其他 S3 兼容服务", value: "s3" },
 ];
 
 const providerHints: Record<StorageProvider, { endpoint: string; region: string; note: string }> = {
     aliyun: { endpoint: "oss-cn-hangzhou.aliyuncs.com", region: "cn-hangzhou", note: "使用 Bucket 所在地域的外网 Endpoint，无需填写 https://。" },
     tencent: { endpoint: "cos.ap-shanghai.myqcloud.com", region: "ap-shanghai", note: "Endpoint 不要包含 Bucket 名称，系统会自动按 S3 协议访问。" },
     aws: { endpoint: "s3.ap-southeast-1.amazonaws.com", region: "ap-southeast-1", note: "建议使用 Bucket 所在 Region 的区域 Endpoint。" },
-    minio: { endpoint: "minio.example.com:9000", region: "us-east-1", note: "支持 MinIO、Cloudflare R2 等兼容 S3 签名的服务。" },
+    s3: { endpoint: "s3.example.com", region: "us-east-1", note: "填写服务商提供的 S3 Endpoint、Region、Bucket 和密钥。" },
 };
 
 export default function AdminStoragePage() {
@@ -38,7 +38,7 @@ export default function AdminStoragePage() {
     const [settings, setSettings] = useState<StorageSettings | null>(null);
     const [cleanupStats, setCleanupStats] = useState<StorageCleanupStats | null>(null);
     const [cleaning, setCleaning] = useState(false);
-    const provider = Form.useWatch("provider", form) ?? "minio";
+    const provider = Form.useWatch("provider", form) ?? "s3";
     const hint = providerHints[provider];
 
     useEffect(() => {

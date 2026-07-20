@@ -1,35 +1,32 @@
-// Package admin 汇集仅管理员可用的用户管理、用量统计与系统概览接口。
+// Package admin 汇集仅管理员可用的用户、媒体、站点和审计接口。
 package admin
 
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/basketikun/infinite-canvas/server/internal/auth"
-	"github.com/basketikun/infinite-canvas/server/internal/credits"
 	"github.com/basketikun/infinite-canvas/server/internal/httpx"
 	"github.com/basketikun/infinite-canvas/server/internal/middleware"
 	"github.com/basketikun/infinite-canvas/server/internal/storage"
 )
 
-// Handler 承接 /api/admin 下的用户管理、用量与概览。渠道管理在 proxy.AdminHandler。
+// Handler 承接 /api/admin 下的用户管理、媒体预览与系统概览。
 type Handler struct {
-	pool    *pgxpool.Pool
-	users   *auth.Store
-	credits *credits.Service
-	store   *storage.Manager // 动态对象存储；删除用户/预览媒体时读取当前生效配置
+	pool  *pgxpool.Pool
+	users *auth.Store
+	store *storage.Manager // 动态对象存储；删除用户/预览媒体时读取当前生效配置
 }
 
-func NewHandler(pool *pgxpool.Pool, users *auth.Store, creditsSvc *credits.Service, store *storage.Manager) *Handler {
-	return &Handler{pool: pool, users: users, credits: creditsSvc, store: store}
+func NewHandler(pool *pgxpool.Pool, users *auth.Store, store *storage.Manager) *Handler {
+	return &Handler{pool: pool, users: users, store: store}
 }
 
-// ListUsers 返回全部用户（含配额与当日用量）。
+// ListUsers 返回全部用户。
 func (h *Handler) ListUsers(c *gin.Context) {
 	list, err := h.users.ListUsers(c.Request.Context())
 	if err != nil {
@@ -44,7 +41,6 @@ type createUserReq struct {
 	Password    string `json:"password"`
 	DisplayName string `json:"displayName"`
 	Role        string `json:"role"`
-	Credits     int64  `json:"credits"`
 }
 
 // CreateUser 由管理员直接创建账号（不受开放注册开关限制）。
@@ -80,12 +76,6 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	if err != nil {
 		httpx.Internal(c, err)
 		return
-	}
-	// 可选初始积分：失败不阻断建号，仅让余额保持 0。
-	if h.credits != nil && req.Credits > 0 {
-		if bal, gErr := h.credits.Grant(c.Request.Context(), u.ID, req.Credits, credits.ReasonTopup, "管理员建号赠送"); gErr == nil {
-			u.Credits = bal
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{"user": u})
 }
@@ -187,75 +177,6 @@ func (h *Handler) SetDisabled(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-type setQuotaReq struct {
-	DailyLimit int `json:"dailyLimit"`
-}
-
-// SetQuota 设置用户每日配额。
-func (h *Handler) SetQuota(c *gin.Context) {
-	id := c.Param("id")
-	var req setQuotaReq
-	if err := c.ShouldBindJSON(&req); err != nil || req.DailyLimit < 0 {
-		httpx.BadRequest(c, "dailyLimit must be >= 0")
-		return
-	}
-	if err := h.users.SetDailyLimit(c.Request.Context(), id, req.DailyLimit); err != nil {
-		httpx.Internal(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-type topupReq struct {
-	Amount int64  `json:"amount"`
-	Note   string `json:"note"`
-}
-
-// Topup 给指定用户充值积分（正数）。返回充值后余额。
-func (h *Handler) Topup(c *gin.Context) {
-	id := c.Param("id")
-	var req topupReq
-	if err := c.ShouldBindJSON(&req); err != nil || req.Amount <= 0 {
-		httpx.BadRequest(c, "amount must be > 0")
-		return
-	}
-	// 确认用户存在，避免给不存在的 id 写台账。
-	if _, err := h.users.FindByID(c.Request.Context(), id); err != nil {
-		if errors.Is(err, auth.ErrNotFound) {
-			httpx.NotFound(c, "user not found")
-			return
-		}
-		httpx.Internal(c, err)
-		return
-	}
-	bal, err := h.credits.Grant(c.Request.Context(), id, req.Amount, credits.ReasonTopup, req.Note)
-	if err != nil {
-		httpx.Internal(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"credits": bal})
-}
-
-// UserLedger 返回指定用户最近的积分流水，供 admin 在用户管理里下钻查看消费/充值记录。
-func (h *Handler) UserLedger(c *gin.Context) {
-	id := c.Param("id")
-	limit, _ := strconv.Atoi(c.Query("limit"))
-	if _, err := h.users.FindByID(c.Request.Context(), id); err != nil {
-		if errors.Is(err, auth.ErrNotFound) {
-			httpx.NotFound(c, "user not found")
-			return
-		}
-		httpx.Internal(c, err)
-		return
-	}
-	items, err := h.credits.History(c.Request.Context(), id, limit)
-	if err != nil {
-		httpx.Internal(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // mapUserErr 把 store 错误映射为 HTTP 响应，返回 true 表示已写出错误响应。

@@ -2,10 +2,13 @@
 package canvas
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/basketikun/infinite-canvas/server/internal/httpx"
@@ -27,7 +30,11 @@ type projectPayload struct {
 func (h *Handler) List(c *gin.Context) {
 	uid := middleware.UserIDFrom(c)
 	rows, err := h.pool.Query(c.Request.Context(),
-		`SELECT data FROM canvas_projects p
+		`SELECT data,
+			CASE WHEN p.user_id = $1 THEN 'owner'
+			     ELSE COALESCE((SELECT tm.role FROM team_members tm WHERE tm.team_id = p.team_id AND tm.user_id = $1), 'viewer')
+			END AS access_role
+		 FROM canvas_projects p
 		 WHERE p.user_id = $1
 		    OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = p.team_id AND tm.user_id = $1)
 		 ORDER BY updated_at DESC`, uid)
@@ -39,11 +46,23 @@ func (h *Handler) List(c *gin.Context) {
 	out := []json.RawMessage{}
 	for rows.Next() {
 		var data []byte
-		if err := rows.Scan(&data); err != nil {
+		var accessRole string
+		if err := rows.Scan(&data, &accessRole); err != nil {
 			httpx.Internal(c, err)
 			return
 		}
-		out = append(out, json.RawMessage(data))
+		var project map[string]any
+		if err := json.Unmarshal(data, &project); err != nil {
+			httpx.Internal(c, err)
+			return
+		}
+		project["accessRole"] = accessRole
+		enriched, err := json.Marshal(project)
+		if err != nil {
+			httpx.Internal(c, err)
+			return
+		}
+		out = append(out, json.RawMessage(enriched))
 	}
 	c.JSON(http.StatusOK, gin.H{"projects": out})
 }
@@ -56,13 +75,24 @@ func (h *Handler) Upsert(c *gin.Context) {
 		httpx.BadRequest(c, "invalid project payload")
 		return
 	}
-	_, err := h.pool.Exec(c.Request.Context(),
+	result, err := h.pool.Exec(c.Request.Context(),
 		`INSERT INTO canvas_projects (id, user_id, title, data, updated_at)
 		 VALUES ($1, $2, $3, $4, now())
 		 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, data = EXCLUDED.data, updated_at = now()
-		 WHERE canvas_projects.user_id = $2`,
+		 WHERE canvas_projects.user_id = $2 OR EXISTS (
+		   SELECT 1 FROM team_members tm
+		   WHERE tm.team_id = canvas_projects.team_id AND tm.user_id = $2 AND tm.role IN ('owner', 'editor')
+		 )`,
 		p.ID, uid, p.Title, []byte(p.Data))
 	if err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	if result.RowsAffected() == 0 {
+		httpx.Forbidden(c, "project is read-only or not found")
+		return
+	}
+	if err := h.syncProjectFileGrants(c, p.ID, p.Data); err != nil {
 		httpx.Internal(c, err)
 		return
 	}
@@ -85,19 +115,26 @@ func (h *Handler) Replace(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback(c.Request.Context())
-	if _, err := tx.Exec(c.Request.Context(), `DELETE FROM canvas_projects WHERE user_id = $1`, uid); err != nil {
-		httpx.Internal(c, err)
-		return
-	}
 	for _, p := range body.Projects {
 		if p.ID == "" || len(p.Data) == 0 {
 			continue
 		}
-		if _, err := tx.Exec(c.Request.Context(),
+		result, err := tx.Exec(c.Request.Context(),
 			`INSERT INTO canvas_projects (id, user_id, title, data) VALUES ($1, $2, $3, $4)
 			 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, data = EXCLUDED.data, updated_at = now()
-			 WHERE canvas_projects.user_id = $2`,
-			p.ID, uid, p.Title, []byte(p.Data)); err != nil {
+			 WHERE canvas_projects.user_id = $2 OR EXISTS (
+			   SELECT 1 FROM team_members tm
+			   WHERE tm.team_id = canvas_projects.team_id AND tm.user_id = $2 AND tm.role IN ('owner', 'editor')
+			 )`,
+			p.ID, uid, p.Title, []byte(p.Data))
+		if err != nil {
+			httpx.Internal(c, err)
+			return
+		}
+		if result.RowsAffected() == 0 {
+			continue
+		}
+		if err := h.syncProjectFileGrantsTx(c, tx, p.ID, p.Data); err != nil {
 			httpx.Internal(c, err)
 			return
 		}
@@ -124,4 +161,67 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) syncProjectFileGrants(c *gin.Context, projectID string, data []byte) error {
+	return h.syncProjectFileGrantsTx(c, h.pool, projectID, data)
+}
+
+type execer interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func (h *Handler) syncProjectFileGrantsTx(c *gin.Context, exec execer, projectID string, data []byte) error {
+	keys := collectStorageKeys(data)
+	if _, err := exec.Exec(c.Request.Context(), `DELETE FROM file_access_grants WHERE project_id = $1`, projectID); err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := exec.Exec(c.Request.Context(),
+		`INSERT INTO file_access_grants (storage_key, grantee_user_id, project_id)
+		 SELECT DISTINCT f.storage_key, tm.user_id, p.id
+		 FROM canvas_projects p
+		 JOIN team_members tm ON tm.team_id = p.team_id
+		 JOIN files f ON f.storage_key = ANY($2::text[]) AND f.deleted_at IS NULL
+		 WHERE p.id = $1
+		 ON CONFLICT DO NOTHING`, projectID, keys)
+	return err
+}
+
+func collectStorageKeys(data []byte) []string {
+	var root any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var walk func(any)
+	walk = func(value any) {
+		switch item := value.(type) {
+		case string:
+			if strings.Contains(item, ":") {
+				for _, prefix := range []string{"image:", "video:", "audio:", "file:"} {
+					if strings.HasPrefix(item, prefix) {
+						seen[item] = struct{}{}
+						break
+					}
+				}
+			}
+		case []any:
+			for _, child := range item {
+				walk(child)
+			}
+		case map[string]any:
+			for _, child := range item {
+				walk(child)
+			}
+		}
+	}
+	walk(root)
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	return keys
 }

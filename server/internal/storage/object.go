@@ -10,7 +10,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-// ObjectStore 封装 MinIO/S3 兼容对象存储。
+// ObjectStore 封装 S3 兼容对象存储。底层客户端只负责 S3 签名协议，不代表需要部署某个特定服务。
 type ObjectStore struct {
 	client *minio.Client
 	bucket string

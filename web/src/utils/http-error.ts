@@ -32,8 +32,8 @@ type BackendErrorShape = {
 function statusMessage(status: number | undefined, fallback: string): string {
     if (status === 401) return "登录状态已失效，请重新登录";
     if (status === 403) return "当前操作没有权限，或平台尚未开放此功能";
-    if (status === 402) return "积分不足，请充值后再试";
-    if (status === 429) return "请求过于频繁或额度不足，请稍后重试";
+    if (status === 402) return "请求未被上游服务接受";
+    if (status === 429) return "请求过于频繁，请稍后重试";
     if (status === 502 || status === 503 || status === 504) return "上游服务暂不可用，请稍后重试";
     return status ? `${fallback}（${status}）` : fallback;
 }

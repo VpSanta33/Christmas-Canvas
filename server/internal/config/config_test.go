@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const validEncKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 64 hex = 32 bytes
+const validEncKey = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789" // 64 hex = 32 bytes
 
 // setRequiredEnv 设置成功加载所需的必填敏感项（连接串 + 密钥），并关闭对象存储，
 // 让不关心 S3 的用例免去逐个设置 S3 凭据。

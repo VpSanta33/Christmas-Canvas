@@ -18,11 +18,17 @@ import (
 
 	"github.com/basketikun/infinite-canvas/server/internal/httpx"
 	"github.com/basketikun/infinite-canvas/server/internal/middleware"
+	"github.com/basketikun/infinite-canvas/server/internal/storage"
 )
 
-type Handler struct{ pool *pgxpool.Pool }
+type Handler struct {
+	pool  *pgxpool.Pool
+	store *storage.Manager
+}
 
-func NewHandler(pool *pgxpool.Pool) *Handler { return &Handler{pool: pool} }
+func NewHandler(pool *pgxpool.Pool, store *storage.Manager) *Handler {
+	return &Handler{pool: pool, store: store}
+}
 
 type Task struct {
 	ID          string          `json:"id"`
@@ -283,6 +289,7 @@ func (h *Handler) CreateShare(c *gin.Context) {
 		return
 	}
 	share.CreatedAt = created.Format(time.RFC3339)
+	_, _ = h.pool.Exec(c.Request.Context(), `INSERT INTO notifications (user_id, type, title, body, data) VALUES ($1, 'share', '画布分享已创建', $2, jsonb_build_object('projectId', $3, 'shareId', $4))`, middleware.UserIDFrom(c), "你的画布已生成新的分享链接。", c.Param("id"), share.ID)
 	c.JSON(http.StatusCreated, share)
 }
 
@@ -318,11 +325,60 @@ func (h *Handler) GetShared(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"projectId": projectID, "title": title, "permission": permission, "expiresAt": expires, "project": json.RawMessage(data)})
 }
 
+// GetSharedFile 只允许读取分享快照中实际出现的媒体，供未登录的只读分享页预览。
+func (h *Handler) GetSharedFile(c *gin.Context) {
+	if h.store == nil || !h.store.Available() {
+		httpx.Fail(c, http.StatusServiceUnavailable, "对象存储未启用或连接不可用")
+		return
+	}
+	key := c.Param("key")
+	var ownerID, permission string
+	var snapshot []byte
+	err := h.pool.QueryRow(c.Request.Context(),
+		`SELECT p.user_id::text, s.permission, p.data
+		 FROM canvas_shares s JOIN canvas_projects p ON p.id = s.project_id
+		 WHERE s.token = $1 AND (s.expires_at IS NULL OR s.expires_at > now())`, c.Param("token")).Scan(&ownerID, &permission, &snapshot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.NotFound(c, "share not found or expired")
+		return
+	}
+	if err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	if !containsStorageKey(snapshot, key) {
+		httpx.Forbidden(c, "file is not part of this shared workflow")
+		return
+	}
+	var objectKey, mimeType string
+	err = h.pool.QueryRow(c.Request.Context(),
+		`SELECT object_key, mime_type FROM files WHERE storage_key = $1 AND user_id = $2 AND deleted_at IS NULL`, key, ownerID).Scan(&objectKey, &mimeType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.NotFound(c, "file not found")
+		return
+	}
+	if err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	data, contentType, err := h.store.Get(c.Request.Context(), objectKey)
+	if err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	if contentType == "" {
+		contentType = mimeType
+	}
+	_ = permission // permission is validated by the share query and kept for future policy changes.
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(http.StatusOK, contentType, data)
+}
+
 func (h *Handler) CopyShared(c *gin.Context) {
-	var title string
+	var title, ownerID string
 	var data []byte
 	var permission string
-	err := h.pool.QueryRow(c.Request.Context(), `SELECT p.title, p.data, s.permission FROM canvas_shares s JOIN canvas_projects p ON p.id = s.project_id WHERE s.token = $1 AND (s.expires_at IS NULL OR s.expires_at > now())`, c.Param("token")).Scan(&title, &data, &permission)
+	err := h.pool.QueryRow(c.Request.Context(), `SELECT p.title, p.user_id::text, p.data, s.permission FROM canvas_shares s JOIN canvas_projects p ON p.id = s.project_id WHERE s.token = $1 AND (s.expires_at IS NULL OR s.expires_at > now())`, c.Param("token")).Scan(&title, &ownerID, &data, &permission)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.NotFound(c, "share not found or expired")
 		return
@@ -340,6 +396,16 @@ func (h *Handler) CopyShared(c *gin.Context) {
 	if err != nil {
 		httpx.Internal(c, err)
 		return
+	}
+	if keys := collectWorkspaceStorageKeys(data); len(keys) > 0 {
+		if _, err := h.pool.Exec(c.Request.Context(),
+			`INSERT INTO file_access_grants (storage_key, grantee_user_id, project_id)
+			 SELECT f.storage_key, $1, $2 FROM files f
+			 WHERE f.user_id = $3 AND f.storage_key = ANY($4::text[]) AND f.deleted_at IS NULL
+			 ON CONFLICT DO NOTHING`, middleware.UserIDFrom(c), projectID, ownerID, keys); err != nil {
+			httpx.Internal(c, err)
+			return
+		}
 	}
 	c.JSON(http.StatusCreated, gin.H{"projectId": projectID, "title": strings.TrimSpace(title) + "（副本）", "project": json.RawMessage(data)})
 }
@@ -368,7 +434,7 @@ type templateInput struct {
 func (h *Handler) ListTemplates(c *gin.Context) {
 	uid := middleware.UserIDFrom(c)
 	q := strings.TrimSpace(c.Query("q"))
-	rows, err := h.pool.Query(c.Request.Context(), `SELECT id::text, owner_id::text, name, description, tags, visibility, data, uses, created_at, updated_at FROM workflow_templates WHERE (owner_id = $1 OR visibility = 'public') AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%') ORDER BY updated_at DESC LIMIT 100`, uid, q)
+	rows, err := h.pool.Query(c.Request.Context(), `SELECT id::text, owner_id::text, name, description, tags, visibility, data, uses, created_at, updated_at FROM workflow_templates t WHERE (owner_id = $1 OR visibility = 'public' OR (visibility = 'team' AND EXISTS (SELECT 1 FROM team_members mine JOIN team_members owner_member ON owner_member.team_id = mine.team_id WHERE mine.user_id = $1 AND owner_member.user_id = t.owner_id))) AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%') ORDER BY updated_at DESC LIMIT 100`, uid, q)
 	if err != nil {
 		httpx.Internal(c, err)
 		return
@@ -392,8 +458,19 @@ func (h *Handler) CreateTemplate(c *gin.Context) {
 		httpx.BadRequest(c, "name and data are required")
 		return
 	}
-	if input.Visibility != "public" {
+	if input.Visibility != "public" && input.Visibility != "team" {
 		input.Visibility = "private"
+	}
+	if input.Visibility == "team" {
+		var member bool
+		if err := h.pool.QueryRow(c.Request.Context(), `SELECT EXISTS (SELECT 1 FROM team_members WHERE user_id = $1)`, middleware.UserIDFrom(c)).Scan(&member); err != nil {
+			httpx.Internal(c, err)
+			return
+		}
+		if !member {
+			httpx.Forbidden(c, "join a team before creating a team template")
+			return
+		}
 	}
 	var id string
 	err := h.pool.QueryRow(c.Request.Context(), `INSERT INTO workflow_templates (owner_id, name, description, tags, visibility, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id::text`, middleware.UserIDFrom(c), strings.TrimSpace(input.Name), strings.TrimSpace(input.Description), input.Tags, input.Visibility, []byte(input.Data)).Scan(&id)
@@ -416,13 +493,26 @@ func (h *Handler) UseTemplate(c *gin.Context) {
 		httpx.Internal(c, err)
 		return
 	}
-	if visibility != "public" && ownerID != middleware.UserIDFrom(c) {
+	if visibility != "public" && ownerID != middleware.UserIDFrom(c) && !(visibility == "team" && h.usersShareTeam(c.Request.Context(), ownerID, middleware.UserIDFrom(c))) {
 		httpx.Forbidden(c, "template is private")
 		return
+	}
+	if keys := collectWorkspaceStorageKeys(data); len(keys) > 0 && ownerID != middleware.UserIDFrom(c) {
+		if _, err := h.pool.Exec(c.Request.Context(),
+			`INSERT INTO file_access_grants (storage_key, grantee_user_id)
+			 SELECT f.storage_key, $1 FROM files f
+			 WHERE f.user_id = $2 AND f.storage_key = ANY($3::text[]) AND f.deleted_at IS NULL
+			 ON CONFLICT DO NOTHING`, middleware.UserIDFrom(c), ownerID, keys); err != nil {
+			httpx.Internal(c, err)
+			return
+		}
 	}
 	if _, err := h.pool.Exec(c.Request.Context(), `UPDATE workflow_templates SET uses = uses + 1, updated_at = now() WHERE id = $1`, c.Param("id")); err != nil {
 		httpx.Internal(c, err)
 		return
+	}
+	if ownerID != middleware.UserIDFrom(c) {
+		_, _ = h.pool.Exec(c.Request.Context(), `INSERT INTO notifications (user_id, type, title, body, data) VALUES ($1, 'template', '模板被复用', $2, jsonb_build_object('templateId', $3))`, ownerID, "你的工作流模板刚刚被其他用户复用。", c.Param("id"))
 	}
 	c.JSON(http.StatusOK, gin.H{"data": json.RawMessage(data)})
 }
@@ -587,6 +677,10 @@ func (h *Handler) AddTeamMember(c *gin.Context) {
 		httpx.Internal(c, err)
 		return
 	}
+	if err := h.grantTeamProjectFiles(c.Request.Context(), teamID, userID); err != nil {
+		httpx.Internal(c, err)
+		return
+	}
 	_, _ = h.pool.Exec(c.Request.Context(), `INSERT INTO notifications (user_id, type, title, body, data) VALUES ($1, 'team', '你已加入团队空间', $2, jsonb_build_object('teamId', $3))`, userID, "你已被添加到团队空间。", teamID)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "userId": userID, "displayName": displayName, "role": role})
 }
@@ -622,6 +716,10 @@ func (h *Handler) RemoveTeamMember(c *gin.Context) {
 		httpx.BadRequest(c, "team owner cannot remove themselves")
 		return
 	}
+	if _, err := h.pool.Exec(c.Request.Context(), `DELETE FROM file_access_grants WHERE grantee_user_id = $2 AND project_id IN (SELECT id FROM canvas_projects WHERE team_id = $1)`, c.Param("id"), c.Param("userId")); err != nil {
+		httpx.Internal(c, err)
+		return
+	}
 	if _, err := h.pool.Exec(c.Request.Context(), `DELETE FROM team_members WHERE team_id = $1 AND user_id = $2 AND role <> 'owner'`, c.Param("id"), c.Param("userId")); err != nil {
 		httpx.Internal(c, err)
 		return
@@ -652,7 +750,58 @@ func (h *Handler) SetProjectTeam(c *gin.Context) {
 		httpx.Internal(c, err)
 		return
 	}
+	if err := h.grantProjectFiles(c.Request.Context(), c.Param("id")); err != nil {
+		httpx.Internal(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) grantProjectFiles(ctx context.Context, projectID string) error {
+	var data []byte
+	if err := h.pool.QueryRow(ctx, `SELECT data FROM canvas_projects WHERE id = $1`, projectID).Scan(&data); err != nil {
+		return err
+	}
+	keys := collectWorkspaceStorageKeys(data)
+	if _, err := h.pool.Exec(ctx, `DELETE FROM file_access_grants WHERE project_id = $1`, projectID); err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := h.pool.Exec(ctx,
+		`INSERT INTO file_access_grants (storage_key, grantee_user_id, project_id)
+		 SELECT DISTINCT f.storage_key, tm.user_id, p.id
+		 FROM canvas_projects p JOIN team_members tm ON tm.team_id = p.team_id
+		 JOIN files f ON f.storage_key = ANY($2::text[]) AND f.deleted_at IS NULL
+		 WHERE p.id = $1 ON CONFLICT DO NOTHING`, projectID, keys)
+	return err
+}
+
+func (h *Handler) grantTeamProjectFiles(ctx context.Context, teamID, userID string) error {
+	rows, err := h.pool.Query(ctx, `SELECT id::text, data FROM canvas_projects WHERE team_id = $1`, teamID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var projectID string
+		var data []byte
+		if err := rows.Scan(&projectID, &data); err != nil {
+			return err
+		}
+		keys := collectWorkspaceStorageKeys(data)
+		if len(keys) == 0 {
+			continue
+		}
+		if _, err := h.pool.Exec(ctx,
+			`INSERT INTO file_access_grants (storage_key, grantee_user_id, project_id)
+			 SELECT f.storage_key, $1, $2 FROM files f
+			 WHERE f.storage_key = ANY($3::text[]) AND f.deleted_at IS NULL ON CONFLICT DO NOTHING`, userID, projectID, keys); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 func (h *Handler) canViewProject(c *gin.Context, projectID string) bool {
@@ -727,6 +876,57 @@ func (h *Handler) isTeamOwner(c *gin.Context, teamID string) bool {
 		httpx.Forbidden(c, "team owner required")
 	}
 	return ok
+}
+
+func (h *Handler) usersShareTeam(ctx context.Context, ownerID, userID string) bool {
+	var shared bool
+	_ = h.pool.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM team_members mine JOIN team_members owner_member ON owner_member.team_id = mine.team_id
+		WHERE mine.user_id = $1 AND owner_member.user_id = $2)`, userID, ownerID).Scan(&shared)
+	return shared
+}
+
+func collectWorkspaceStorageKeys(data []byte) []string {
+	var root any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var walk func(any)
+	walk = func(value any) {
+		switch item := value.(type) {
+		case string:
+			for _, prefix := range []string{"image:", "video:", "audio:", "file:"} {
+				if strings.HasPrefix(item, prefix) {
+					seen[item] = struct{}{}
+					break
+				}
+			}
+		case []any:
+			for _, child := range item {
+				walk(child)
+			}
+		case map[string]any:
+			for _, child := range item {
+				walk(child)
+			}
+		}
+	}
+	walk(root)
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func containsStorageKey(data []byte, target string) bool {
+	for _, key := range collectWorkspaceStorageKeys(data) {
+		if key == target {
+			return true
+		}
+	}
+	return false
 }
 
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {

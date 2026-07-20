@@ -98,7 +98,7 @@ export type WorkflowTemplate = {
     name: string;
     description: string;
     tags: string[];
-    visibility: "private" | "public";
+    visibility: "private" | "team" | "public";
     data: Record<string, unknown>;
     uses: number;
     createdAt: string;

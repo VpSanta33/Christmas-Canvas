@@ -41,13 +41,6 @@ export async function fetchMe(): Promise<AuthUser> {
     return data.user;
 }
 
-export type UsageSummary = { used: number; limit: number; remaining: number };
-
-export async function fetchUsage(): Promise<UsageSummary> {
-    const { data } = await httpClient.get<UsageSummary>("/usage");
-    return data;
-}
-
 export async function logout(): Promise<void> {
     await httpClient.post("/auth/logout", {});
 }

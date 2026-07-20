@@ -101,7 +101,7 @@ func NewManager(ctx context.Context, pool *pgxpool.Pool, cipher *Cipher, default
 	}
 	if err != nil {
 		normalized = resolvedSettings{RuntimeDefaults: RuntimeDefaults{
-			Enabled: false, Provider: "minio", Region: "us-east-1", PublicBaseURL: "/api/files/",
+			Enabled: false, Provider: "s3", Region: "us-east-1", PublicBaseURL: "/api/files/",
 			ImagePathPrefix: "image", VideoPathPrefix: "Video", TrashRetentionDays: 7,
 		}}
 	}
@@ -290,7 +290,7 @@ func (m *Manager) merged(update SettingsUpdate) (resolvedSettings, error) {
 func normalizeResolved(settings resolvedSettings) (resolvedSettings, error) {
 	settings.Provider = strings.ToLower(strings.TrimSpace(settings.Provider))
 	if settings.Provider == "" {
-		settings.Provider = "minio"
+		settings.Provider = "s3"
 	}
 	settings.Endpoint = strings.TrimSpace(settings.Endpoint)
 	if strings.Contains(settings.Endpoint, "://") {

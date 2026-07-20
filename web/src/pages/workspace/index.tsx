@@ -3,7 +3,7 @@ import { App, Avatar, Button, Card, Empty, Input, List, Select, Spin, Tabs, Tag,
 import { Bell, Check, Copy, FileClock, FolderKanban, Layers3, Link2, Plus, RefreshCw, Repeat2, Search, Share2, Sparkles, Trash2, UsersRound, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { isBackendMode } from "@/constant/runtime-config";
+import { API_BASE_URL, isBackendMode } from "@/constant/runtime-config";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import { useConfigStore } from "@/stores/use-config-store";
@@ -141,25 +141,37 @@ function TaskCenter() {
             });
         }
         if (item.capability === "video") {
-            dispatchVideo({ prompt, run: false });
+            const request = item.request || {};
+            dispatchVideo({
+                prompt,
+                run: false,
+                references: Array.isArray(request.references) ? request.references : [],
+                videoReferences: Array.isArray(request.videoReferences) ? request.videoReferences : [],
+                audioReferences: Array.isArray(request.audioReferences) ? request.audioReferences : [],
+            });
             navigate("/video");
         } else {
             updateConfig("count", "1");
-            dispatchImage({ prompt, run: false });
+            dispatchImage({ prompt, run: false, references: Array.isArray(item.request?.references) ? item.request.references : [] });
             navigate("/image");
         }
     };
 
     const batchGenerate = (capabilityToRun: "image" | "video") => {
+        let prompts: string[] = [];
         if (capabilityToRun === "image") {
             updateConfig("count", "4");
             dispatchImage({ prompt: "", run: false });
             navigate("/image");
         } else {
-            dispatchVideo({ prompt: "", run: false });
+            prompts = selected
+                .map((id) => items.find((item) => item.id === id))
+                .filter((item): item is UnifiedTask => Boolean(item && item.capability === "video" && item.prompt.trim()))
+                .map((item) => item.prompt.trim());
+            dispatchVideo({ prompt: prompts[0] || "", batchPrompts: prompts, run: prompts.length > 1 });
             navigate("/video");
         }
-        message.info(capabilityToRun === "image" ? "已打开 4 张批量生图配置" : "已打开批量视频工作台");
+        message.info(capabilityToRun === "image" ? "已打开 4 张批量生图配置" : prompts.length > 1 ? `已提交 ${prompts.length} 个视频任务` : "已打开视频创作台；选择任务后可批量提交");
     };
 
     const deleteSelected = () => {
@@ -356,12 +368,29 @@ export function SharedCanvasPage() {
     if (loading) return <main className="grid min-h-dvh place-items-center"><Spin /></main>;
     if (!shared) return <main className="grid min-h-dvh place-items-center"><Empty description="分享链接不存在或已过期" /></main>;
     const data = shared.project as Partial<CanvasProject>;
-    return <main className="min-h-dvh bg-[#f7f7f5] px-5 py-12 text-stone-950 dark:bg-[#0d0d0c] dark:text-stone-100"><Card className="mx-auto max-w-2xl" title={<span className="inline-flex items-center gap-2"><Share2 className="size-4" />{shared.title}</span>}><div className="grid gap-3 sm:grid-cols-3"><Stat label="节点" value={data.nodes?.length || 0} /><Stat label="连线" value={data.connections?.length || 0} /><Stat label="权限" value={shared.permission === "copy" ? "可复制" : "仅查看"} /></div>{shared.permission === "copy" ? <Button type="primary" className="mt-6" icon={<Copy className="size-4" />} onClick={() => void copy()}>复制到我的画布</Button> : null}</Card></main>;
+    return <main className="min-h-dvh bg-[#f7f7f5] px-5 py-12 text-stone-950 dark:bg-[#0d0d0c] dark:text-stone-100"><Card className="mx-auto max-w-5xl" title={<span className="inline-flex items-center gap-2"><Share2 className="size-4" />{shared.title}</span>}><div className="grid gap-3 sm:grid-cols-3"><Stat label="节点" value={data.nodes?.length || 0} /><Stat label="连线" value={data.connections?.length || 0} /><Stat label="权限" value={shared.permission === "copy" ? "可复制" : "仅查看"} /></div><div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{(data.nodes || []).map((node) => <SharedNodePreview key={node.id} node={node} token={token} />)}</div>{shared.permission === "copy" ? <Button type="primary" className="mt-6" icon={<Copy className="size-4" />} onClick={() => void copy()}>复制到我的画布</Button> : null}</Card></main>;
+}
+
+function SharedNodePreview({ node, token }: { node: CanvasProject["nodes"][number]; token: string }) {
+    const metadata = node.metadata || {};
+    const storageKey = metadata.storageKey;
+    const mediaURL = storageKey ? `${API_BASE_URL}/shared/${encodeURIComponent(token)}/files/${encodeURIComponent(storageKey)}` : "";
+    if (node.type === "image" && mediaURL) return <figure className="m-0 overflow-hidden rounded-md border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-950"><img src={mediaURL} alt={node.title} className="aspect-square w-full object-cover" /><figcaption className="truncate px-3 py-2 text-xs text-stone-500">{node.title}</figcaption></figure>;
+    if (node.type === "video" && mediaURL) return <figure className="m-0 overflow-hidden rounded-md border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-950"><video src={mediaURL} controls preload="metadata" className="aspect-video w-full bg-black object-contain" /><figcaption className="truncate px-3 py-2 text-xs text-stone-500">{node.title}</figcaption></figure>;
+    if (node.type === "audio" && mediaURL) return <figure className="m-0 rounded-md border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950"><div className="mb-2 truncate text-sm font-medium">{node.title}</div><audio src={mediaURL} controls className="w-full" /></figure>;
+    const text = metadata.content || metadata.prompt || node.title;
+    return <div className="min-h-24 rounded-md border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950"><div className="mb-2 text-xs font-medium text-stone-500">{node.title}</div><p className="m-0 whitespace-pre-wrap break-words text-sm">{text}</p></div>;
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) { return <div className="border-l-2 border-stone-200 pl-3 dark:border-stone-800"><div className="text-xs text-stone-500">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div></div>; }
 function localTaskToUnified(item: GenerationTaskItem): UnifiedTask { return { id: item.id, clientKey: `${item.capability}:${item.id}`, capability: item.capability, status: item.status === "completed" ? "done" : item.status, title: item.title, prompt: item.prompt, model: item.model, error: item.error, createdAt: new Date(item.createdAt).toISOString(), updatedAt: new Date(item.createdAt).toISOString(), thumbnails: item.thumbnails, request: item.request, result: item.result, local: true }; }
-function resultThumbnails(result?: Record<string, unknown>) { const raw = Array.isArray(result?.thumbnails) ? result.thumbnails : []; return raw.map((item) => String(item)).filter(Boolean); }
+function resultThumbnails(result?: Record<string, unknown>) {
+    const raw = Array.isArray(result?.thumbnails) ? result.thumbnails : [];
+    const video = result?.video;
+    const videoItem = video && typeof video === "object" ? (video as Record<string, unknown>) : null;
+    const videoSource = videoItem?.storageKey || videoItem?.url;
+    return [...raw.map((item) => String(item)).filter(Boolean), ...(typeof videoSource === "string" && videoSource ? [videoSource] : [])];
+}
 function ImagePlusIcon() { return <Sparkles className="size-4" />; }
 function VideoIcon() { return <Layers3 className="size-4" />; }
 
@@ -374,5 +403,6 @@ function TaskThumbnail({ value, remote, capability }: { value: string; remote: b
         void request.then((url) => alive && setSrc(url)).catch(() => undefined);
         return () => { alive = false; };
     }, [capability, remote, value]);
+    if (capability === "video") return <video src={src} controls preload="metadata" className="aspect-video w-full rounded-md bg-stone-100 object-cover dark:bg-stone-900" />;
     return <img src={src} alt="生成结果" className="aspect-square w-full rounded-md bg-stone-100 object-cover dark:bg-stone-900" />;
 }

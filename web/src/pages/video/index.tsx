@@ -106,6 +106,7 @@ export default function VideoPage() {
     const videoCommand = useWorkbenchAgentStore((state) => state.videoCommand);
     const clearVideoCommand = useWorkbenchAgentStore((state) => state.clearVideoCommand);
     const processedCommandRef = useRef(0);
+    const batchPromptsRef = useRef<string[]>([]);
     const loadedContestEntryRef = useRef("");
 
     const model = effectiveConfig.videoModel || effectiveConfig.model;
@@ -198,8 +199,8 @@ export default function VideoPage() {
             message.error("剪切板里没有可读取的图片");
         }
     };
-    const generate = async () => {
-        const snapshot = buildRequestSnapshot();
+    const generate = async (promptOverride?: string) => {
+        const snapshot = buildRequestSnapshot(promptOverride);
         if (!snapshot) return;
         setElapsedMs(0);
         setRunning(true);
@@ -212,7 +213,7 @@ export default function VideoPage() {
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, videoReferences: snapshot.videoReferences, audioReferences: snapshot.audioReferences, durationMs: 0, status: "生成中", task });
             await saveLog(log, false);
             message.success(`任务已提交到个人 API：${task.id}`);
-            void pollGenerationLog(log, snapshot.config);
+            await pollGenerationLog(log, snapshot.config);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "生成失败";
             setResults([{ id: nanoid(), status: "failed", error: errorMessage }]);
@@ -239,19 +240,37 @@ export default function VideoPage() {
         if (!videoCommand || videoCommand.nonce === processedCommandRef.current) return;
         processedCommandRef.current = videoCommand.nonce;
         clearVideoCommand();
+        batchPromptsRef.current = videoCommand.batchPrompts?.filter((item) => item.trim()) || [];
         if (typeof videoCommand.prompt === "string") setPrompt(videoCommand.prompt);
+        if (videoCommand.references?.length) {
+            void Promise.all(videoCommand.references.map(async (item) => ({ ...item, dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl || item.url || "") }))).then(setReferences);
+        }
+        if (videoCommand.videoReferences?.length) {
+            void Promise.all(videoCommand.videoReferences.map(async (item) => ({ ...item, url: item.storageKey ? await resolveMediaUrl(item.storageKey, item.url || "") : item.url }))).then(setVideoReferences);
+        }
+        if (videoCommand.audioReferences?.length) {
+            void Promise.all(videoCommand.audioReferences.map(async (item) => ({ ...item, url: item.storageKey ? await resolveMediaUrl(item.storageKey, item.url || "") : item.url }))).then(setAudioReferences);
+        }
         if (videoCommand.attachments?.length) void addReferences(videoCommand.attachments);
         if (videoCommand.run && !running) setAutoRunToken((value) => value + 1);
     }, [videoCommand, clearVideoCommand, running]);
 
     useEffect(() => {
         if (!autoRunToken) return;
-        void generate();
+        const prompts = batchPromptsRef.current;
+        batchPromptsRef.current = [];
+        void (async () => {
+            if (prompts.length > 1) {
+                for (const item of prompts) await generate(item);
+            } else {
+                await generate();
+            }
+        })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoRunToken]);
 
-    const buildRequestSnapshot = () => {
-        const text = prompt.trim();
+    const buildRequestSnapshot = (promptOverride?: string) => {
+        const text = (promptOverride ?? prompt).trim();
         if (!text) {
             message.error("请输入视频提示词");
             return null;

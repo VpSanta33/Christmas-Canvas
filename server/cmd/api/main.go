@@ -19,11 +19,9 @@ import (
 	"github.com/basketikun/infinite-canvas/server/internal/canvas"
 	"github.com/basketikun/infinite-canvas/server/internal/config"
 	"github.com/basketikun/infinite-canvas/server/internal/contest"
-	"github.com/basketikun/infinite-canvas/server/internal/credits"
 	"github.com/basketikun/infinite-canvas/server/internal/db"
 	filepkg "github.com/basketikun/infinite-canvas/server/internal/file"
 	"github.com/basketikun/infinite-canvas/server/internal/platform"
-	"github.com/basketikun/infinite-canvas/server/internal/proxy"
 	"github.com/basketikun/infinite-canvas/server/internal/quota"
 	"github.com/basketikun/infinite-canvas/server/internal/router"
 	"github.com/basketikun/infinite-canvas/server/internal/storage"
@@ -52,7 +50,7 @@ func main() {
 		log.Fatalf("cipher: %v", err)
 	}
 	storageManager, err := storage.NewManager(ctx, pool, cipher, storage.RuntimeDefaults{
-		Enabled: cfg.StorageEnabled, Provider: "minio", Endpoint: cfg.S3Endpoint,
+		Enabled: cfg.StorageEnabled, Provider: "s3", Endpoint: cfg.S3Endpoint,
 		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, Bucket: cfg.S3Bucket,
 		Region: cfg.S3Region, UseSSL: cfg.S3UseSSL, PublicBaseURL: cfg.PublicFileBaseURL,
 		PathPrefix: cfg.S3PathPrefix, ImagePathPrefix: cfg.S3ImagePathPrefix,
@@ -78,17 +76,14 @@ func main() {
 
 	authMgr := auth.NewManager(cfg.JWTSecret, cfg.AccessTTL, cfg.RefreshTTL)
 	userStore := auth.NewStore(pool)
-	platformStore := platform.NewStore(pool, cipher, cfg.AllowRegistration, cfg.RegisterGrantCredits, platform.EmailSettings{
+	platformStore := platform.NewStore(pool, cipher, cfg.AllowRegistration, platform.EmailSettings{
 		Enabled: cfg.EmailVerificationEnabled, Host: cfg.SMTPHost, Port: cfg.SMTPPort,
 		Mode: cfg.SMTPMode, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
 		FromEmail: cfg.SMTPFromEmail, FromName: cfg.SMTPFromName,
 	})
-	channelStore := proxy.NewChannelStore(pool, cipher)
-	quotaSvc := quota.NewService(pool, rdb)
-	quotaSvc.SetAutoPausePolicy(platformStore)
-	creditsSvc := credits.NewService(pool)
+	quotaSvc := quota.NewService(rdb)
 
-	authHandler := auth.NewHandler(userStore, authMgr, cfg.AllowRegistration, cfg.RegisterGrantCredits, creditsSvc)
+	authHandler := auth.NewHandler(userStore, authMgr, cfg.AllowRegistration)
 	authHandler.SetRegistrationPolicy(platformStore)
 	authHandler.SetLoginGuard(auth.NewLoginGuard(rdb))
 	platformHandler := platform.NewHandler(platformStore)
@@ -100,13 +95,10 @@ func main() {
 	canvasHandler := canvas.NewHandler(pool)
 	assetHandler := asset.NewHandler(pool)
 	fileHandler := filepkg.NewHandler(pool, storageManager)
-	proxyHandler := proxy.NewHandler(channelStore, usageRecorder{quotaSvc}, creditsSvc)
-	channelAdmin := proxy.NewAdminHandler(channelStore)
-	adminHandler := admin.NewHandler(pool, userStore, creditsSvc, storageManager)
+	adminHandler := admin.NewHandler(pool, userStore, storageManager)
 	storageAdmin := storage.NewAdminHandler(storageManager)
-	creditsHandler := credits.NewHandler(creditsSvc)
-	contestHandler := contest.NewHandler(pool, storageManager, creditsSvc)
-	workspaceHandler := workspace.NewHandler(pool)
+	contestHandler := contest.NewHandler(pool, storageManager)
+	workspaceHandler := workspace.NewHandler(pool, storageManager)
 
 	deps := router.Deps{
 		Cfg:              cfg,
@@ -115,11 +107,8 @@ func main() {
 		CanvasHandler:    canvasHandler,
 		AssetHandler:     assetHandler,
 		FileHandler:      fileHandler,
-		ProxyHandler:     proxyHandler,
-		ChannelAdmin:     channelAdmin,
 		AdminHandler:     adminHandler,
 		StorageAdmin:     storageAdmin,
-		CreditsHandler:   creditsHandler,
 		ContestHandler:   contestHandler,
 		WorkspaceHandler: workspaceHandler,
 		QuotaSvc:         quotaSvc,
@@ -155,24 +144,4 @@ func main() {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
 	log.Println("server stopped")
-}
-
-// usageRecorder 把 quota.Service 适配成 proxy.UsageRecorder：两个包各自定义
-// UsageEvent（避免 quota 反向依赖 proxy），此处做字段搬运。
-type usageRecorder struct{ svc *quota.Service }
-
-func (u usageRecorder) Record(ctx context.Context, ev proxy.UsageEvent) {
-	u.svc.Record(ctx, quota.UsageEvent{
-		UserID:       ev.UserID,
-		Capability:   ev.Capability,
-		ChannelID:    ev.ChannelID,
-		Model:        ev.Model,
-		Status:       ev.Status,
-		HTTPStatus:   ev.HTTPStatus,
-		ErrorMessage: ev.ErrorMessage,
-		RequestID:    ev.RequestID,
-		LatencyMs:    ev.LatencyMs,
-		Credits:      ev.Credits,
-		Refunded:     ev.Refunded,
-	})
 }

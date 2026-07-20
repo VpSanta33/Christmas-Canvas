@@ -156,7 +156,7 @@ export async function testEmailSettings(email: string): Promise<void> {
     await httpClient.post("/admin/email-settings/test", { email });
 }
 
-export type StorageProvider = "aliyun" | "tencent" | "aws" | "minio";
+export type StorageProvider = "aliyun" | "tencent" | "aws" | "s3";
 
 export type StorageSettings = {
     configured: boolean;

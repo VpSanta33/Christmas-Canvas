@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 
 import { nanoid } from "nanoid";
+import { isBackendMode } from "@/constant/runtime-config";
 import { localForageStorage } from "@/lib/localforage-storage";
 import { cleanupUnusedImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { cleanupUnusedMedia, resolveMediaUrl } from "@/services/file-storage";
@@ -82,6 +83,7 @@ export const useAssetStore = create<AssetStore>()(
             removeAsset: (id) =>
                 set((state) => {
                     const assets = state.assets.filter((asset) => asset.id !== id);
+                    if (isBackendMode()) void import("@/services/http-client").then(({ httpClient }) => httpClient.delete(`/assets/${encodeURIComponent(id)}`)).catch(() => undefined);
                     get().cleanupImages({ assets });
                     return { assets };
                 }),

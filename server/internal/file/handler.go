@@ -136,7 +136,8 @@ func (h *Handler) saveUploaded(c *gin.Context, uid, storageKey, objectKey, mimeT
 	})
 }
 
-// Download 按 storageKey 返回二进制（需属于当前用户）。
+// Download 按 storageKey 返回二进制。原作者可读，分享复制/模板/团队成员通过
+// file_access_grants 获得最小范围的读取授权。
 func (h *Handler) Download(c *gin.Context) {
 	if !h.ensureStore(c) {
 		return
@@ -145,7 +146,13 @@ func (h *Handler) Download(c *gin.Context) {
 	storageKey := c.Param("key")
 	var objectKey, mimeType string
 	err := h.pool.QueryRow(c.Request.Context(),
-		`SELECT object_key, mime_type FROM files WHERE storage_key = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		`SELECT f.object_key, f.mime_type
+			 FROM files f
+			 WHERE f.storage_key = $1 AND f.deleted_at IS NULL
+			   AND (f.user_id = $2 OR EXISTS (
+				   SELECT 1 FROM file_access_grants g
+				   WHERE g.storage_key = f.storage_key AND g.grantee_user_id = $2
+			   ))`,
 		storageKey, uid).Scan(&objectKey, &mimeType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.NotFound(c, "file not found")

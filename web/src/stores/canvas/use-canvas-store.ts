@@ -18,6 +18,7 @@ export type CanvasProject = {
     backgroundMode: CanvasBackgroundMode;
     showImageInfo: boolean;
     viewport: ViewportTransform;
+    accessRole?: "owner" | "editor" | "viewer";
 };
 
 type CanvasStore = {

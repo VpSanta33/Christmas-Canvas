@@ -17,7 +17,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/basketikun/infinite-canvas/server/internal/credits"
 	"github.com/basketikun/infinite-canvas/server/internal/httpx"
 	"github.com/basketikun/infinite-canvas/server/internal/middleware"
 	"github.com/basketikun/infinite-canvas/server/internal/storage"
@@ -34,13 +33,12 @@ const (
 var mediaKeyPrefixes = []string{"image:", "video:", "audio:", "file:"}
 
 type Handler struct {
-	pool    *pgxpool.Pool
-	store   *storage.Manager
-	credits *credits.Service
+	pool  *pgxpool.Pool
+	store *storage.Manager
 }
 
-func NewHandler(pool *pgxpool.Pool, store *storage.Manager, creditsSvc *credits.Service) *Handler {
-	return &Handler{pool: pool, store: store, credits: creditsSvc}
+func NewHandler(pool *pgxpool.Pool, store *storage.Manager) *Handler {
+	return &Handler{pool: pool, store: store}
 }
 
 type createRequest struct {
@@ -498,8 +496,7 @@ func jsonContainsString(v any, target string) bool {
 	return false
 }
 
-// Like 记录一张有效票用于排名。积分不在此发放——改由管理员按点赞情况
-// 手动结算（见 Settle），因此这里不再触碰 users.credits / credit_ledger。
+// Like 记录一张有效票用于社区排名，不产生任何平台奖励或计费记录。
 func (h *Handler) Like(c *gin.Context) {
 	uid := middleware.UserIDFrom(c)
 	entryID := c.Param("id")
@@ -833,7 +830,7 @@ func validateCreateRequest(req createRequest) string {
 	return ""
 }
 
-// AdminEntry 是管理端审核列表的行，比公开 Entry 多出审核 / 结算元数据。
+// AdminEntry 是管理端审核列表的行，比公开 Entry 多出审核元数据。
 type AdminEntry struct {
 	ID            string `json:"id"`
 	Title         string `json:"title"`
@@ -847,7 +844,6 @@ type AdminEntry struct {
 	Likes         int    `json:"likes"`
 	Status        string `json:"status"`
 	ReviewNote    string `json:"reviewNote"`
-	Settled       bool   `json:"settled"`
 	Featured      bool   `json:"featured"`
 	CreatedAt     string `json:"createdAt"`
 }
@@ -876,7 +872,7 @@ func (h *Handler) AdminList(c *gin.Context) {
 	query := `SELECT e.id, e.title, e.description, e.recipe_type, e.recipe_content, f.mime_type,
 	                e.user_id, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)), u.email,
 	                (SELECT count(*) FROM creator_contest_likes l WHERE l.entry_id = e.id),
-		                e.status, e.review_note, e.settled_at IS NOT NULL, e.featured, e.created_at
+	                e.status, e.review_note, e.featured, e.created_at
 	         FROM creator_contest_entries e
 	         JOIN users u ON u.id = e.user_id
 	         JOIN files f ON f.storage_key = e.video_storage_key` + where +
@@ -894,7 +890,7 @@ func (h *Handler) AdminList(c *gin.Context) {
 		var createdAt time.Time
 		if err := rows.Scan(&item.ID, &item.Title, &item.Description, &item.RecipeType, &item.RecipeContent,
 			&item.VideoMimeType, &item.AuthorID, &item.AuthorName, &item.AuthorEmail, &item.Likes,
-			&item.Status, &item.ReviewNote, &item.Settled, &item.Featured, &createdAt); err != nil {
+			&item.Status, &item.ReviewNote, &item.Featured, &createdAt); err != nil {
 			httpx.Internal(c, err)
 			return
 		}
@@ -977,81 +973,4 @@ func (h *Handler) Review(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": status})
-}
-
-type settleRequest struct {
-	Amount int64  `json:"amount"`
-	Note   string `json:"note"`
-}
-
-// Settle 管理员手动给作者结算积分。每件作品仅可结算一次（settled_at 防重复）。
-func (h *Handler) Settle(c *gin.Context) {
-	if h.credits == nil {
-		httpx.Fail(c, http.StatusServiceUnavailable, "credits service disabled")
-		return
-	}
-	var req settleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.BadRequest(c, "invalid body")
-		return
-	}
-	if req.Amount <= 0 {
-		httpx.BadRequest(c, "amount must be positive")
-		return
-	}
-	note := strings.TrimSpace(req.Note)
-	if utf8.RuneCountInString(note) > 500 {
-		httpx.BadRequest(c, "settlement note is too long")
-		return
-	}
-	entryID := c.Param("id")
-
-	// 先原子占位：把未结算作品标记为已结算，拿到作者 id；已结算则冲突返回 409。
-	var authorID string
-	err := h.pool.QueryRow(c.Request.Context(),
-		`UPDATE creator_contest_entries SET settled_at = now()
-		 WHERE id = $1 AND status = 'approved' AND settled_at IS NULL
-		 RETURNING user_id`, entryID).Scan(&authorID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		// 区分「不存在」「未通过审核」与「已结算」。
-		var status string
-		var settled bool
-		e := h.pool.QueryRow(c.Request.Context(),
-			`SELECT status, settled_at IS NOT NULL FROM creator_contest_entries WHERE id = $1`, entryID).Scan(&status, &settled)
-		if errors.Is(e, pgx.ErrNoRows) {
-			httpx.NotFound(c, "contest entry not found")
-			return
-		}
-		if e != nil {
-			httpx.Internal(c, e)
-			return
-		}
-		if status != "approved" {
-			httpx.Fail(c, http.StatusConflict, "entry is not approved")
-			return
-		}
-		if settled {
-			httpx.Fail(c, http.StatusConflict, "entry already settled")
-			return
-		}
-		httpx.Fail(c, http.StatusConflict, "entry already settled")
-		return
-	}
-	if err != nil {
-		httpx.Internal(c, err)
-		return
-	}
-
-	if note == "" {
-		note = "创作者大赛奖励结算"
-	}
-	balance, err := h.credits.Grant(c.Request.Context(), authorID, req.Amount, credits.ReasonContestAward, note)
-	if err != nil {
-		// 发放失败则回滚结算占位，避免作品被标记已结算却没拿到积分。
-		_, _ = h.pool.Exec(c.Request.Context(),
-			`UPDATE creator_contest_entries SET settled_at = NULL WHERE id = $1`, entryID)
-		httpx.Internal(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"settled": true, "amount": req.Amount, "balance": balance})
 }

@@ -17,8 +17,6 @@ type Handler struct {
 	store              *Store
 	mgr                *Manager
 	allowRegistration  bool
-	grantCredits       int64
-	granter            CreditGranter
 	policy             RegistrationPolicy
 	verification       EmailVerificationOptions
 	verificationSender VerificationSender
@@ -26,26 +24,19 @@ type Handler struct {
 	loginGuard         *LoginGuard
 }
 
-// CreditGranter 用于注册时给新用户赠送初始积分（credits 包实现）。
-type CreditGranter interface {
-	Grant(ctx context.Context, userID string, amount int64, reason, note string) (int64, error)
-}
-
 type RegistrationPolicy interface {
-	RegistrationPolicy(ctx context.Context) (allow bool, grantCredits int64, err error)
+	RegistrationPolicy(ctx context.Context) (allow bool, err error)
 }
 
 type EmailVerificationPolicy interface {
 	EmailVerificationEnabled(ctx context.Context) (bool, error)
 }
 
-func NewHandler(store *Store, mgr *Manager, allowRegistration bool, grantCredits int64, granter CreditGranter) *Handler {
+func NewHandler(store *Store, mgr *Manager, allowRegistration bool) *Handler {
 	return &Handler{
 		store:             store,
 		mgr:               mgr,
 		allowRegistration: allowRegistration,
-		grantCredits:      grantCredits,
-		granter:           granter,
 	}
 }
 
@@ -89,10 +80,9 @@ func (h *Handler) Register(c *gin.Context) {
 	firstUser := userCount == 0
 
 	allowRegistration := h.allowRegistration
-	grantCredits := h.grantCredits
 	if h.policy != nil {
 		var err error
-		allowRegistration, grantCredits, err = h.policy.RegistrationPolicy(c.Request.Context())
+		allowRegistration, err = h.policy.RegistrationPolicy(c.Request.Context())
 		if err != nil {
 			httpx.Internal(c, err)
 			return
@@ -164,7 +154,6 @@ func (h *Handler) Register(c *gin.Context) {
 		httpx.Internal(c, err)
 		return
 	}
-	h.grantRegistrationCredits(c.Request.Context(), &u, grantCredits)
 	h.respondTokens(c, u)
 }
 
@@ -245,12 +234,6 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 		}
 		return
 	}
-	_, grantCredits, policyErr := h.registrationPolicy(c.Request.Context())
-	if policyErr != nil {
-		log.Printf("email verification grant policy: %v", policyErr)
-		grantCredits = h.grantCredits
-	}
-	h.grantRegistrationCredits(c.Request.Context(), &u, grantCredits)
 	h.respondTokens(c, u)
 }
 
@@ -364,22 +347,6 @@ func (h *Handler) respondTokens(c *gin.Context, u User) {
 		return
 	}
 	c.JSON(http.StatusOK, tokenPair{Token: access, RefreshToken: refresh, User: u})
-}
-
-func (h *Handler) registrationPolicy(ctx context.Context) (bool, int64, error) {
-	if h.policy == nil {
-		return h.allowRegistration, h.grantCredits, nil
-	}
-	return h.policy.RegistrationPolicy(ctx)
-}
-
-func (h *Handler) grantRegistrationCredits(ctx context.Context, u *User, amount int64) {
-	if h.granter == nil || amount <= 0 {
-		return
-	}
-	if balance, err := h.granter.Grant(ctx, u.ID, amount, "register", "注册赠送"); err == nil {
-		u.Credits = balance
-	}
 }
 
 func (h *Handler) emailVerificationEnabled(ctx context.Context) (bool, error) {

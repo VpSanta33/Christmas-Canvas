@@ -3,6 +3,8 @@ import { Button, Modal } from "antd";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
+import { isBackendMode } from "@/constant/runtime-config";
+import { httpClient } from "@/services/http-client";
 
 export function CanvasDeleteProjectsDialog() {
     const ids = useCanvasUiStore((state) => state.deleteProjectIds);
@@ -10,7 +12,8 @@ export function CanvasDeleteProjectsDialog() {
     const removeSelectedIds = useCanvasUiStore((state) => state.removeSelectedProjectIds);
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const cleanupImages = useAssetStore((state) => state.cleanupImages);
-    const confirm = () => {
+    const confirm = async () => {
+        if (isBackendMode()) await Promise.all(ids.map((id) => httpClient.delete(`/projects/${encodeURIComponent(id)}`).catch(() => undefined)));
         deleteProjects(ids);
         cleanupImages();
         removeSelectedIds(ids);

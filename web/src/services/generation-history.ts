@@ -44,7 +44,13 @@ export function syncGenerationTask(value: Record<string, unknown>, capability: G
         title: String(value.title || "生成任务"),
         prompt: String(value.prompt || ""),
         model: String(value.model || ""),
-        request: { config: value.config || {}, references, task: value.task || null },
+        request: {
+            config: value.config || {},
+            references,
+            videoReferences: Array.isArray(value.videoReferences) ? value.videoReferences.map((item) => compactMedia(item)) : [],
+            audioReferences: Array.isArray(value.audioReferences) ? value.audioReferences.map((item) => compactMedia(item)) : [],
+            task: value.task || null,
+        },
         result,
         error: String(value.error || ""),
     }).catch(() => undefined);
@@ -53,7 +59,7 @@ export function syncGenerationTask(value: Record<string, unknown>, capability: G
 function compactMedia(value: unknown) {
     if (!value || typeof value !== "object") return value;
     const item = value as Record<string, unknown>;
-    return { id: item.id, name: item.name, type: item.type, storageKey: item.storageKey, mimeType: item.mimeType, width: item.width, height: item.height, bytes: item.bytes, durationMs: item.durationMs };
+    return { id: item.id, name: item.name, type: item.type, url: item.url, dataUrl: item.dataUrl, storageKey: item.storageKey, mimeType: item.mimeType, width: item.width, height: item.height, bytes: item.bytes, durationMs: item.durationMs };
 }
 
 export async function readGenerationTasks(): Promise<GenerationTaskItem[]> {

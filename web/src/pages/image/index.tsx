@@ -232,6 +232,9 @@ export default function ImagePage() {
         processedCommandRef.current = imageCommand.nonce;
         clearImageCommand();
         if (typeof imageCommand.prompt === "string") setPrompt(imageCommand.prompt);
+        if (imageCommand.references?.length) {
+            void Promise.all(imageCommand.references.map(async (item) => ({ ...item, dataUrl: await resolveImageUrl(item.storageKey, item.dataUrl || item.url || "") }))).then(setReferences);
+        }
         if (imageCommand.attachments?.length) void addReferences(imageCommand.attachments);
         if (imageCommand.run && !running) setAutoRunToken((value) => value + 1);
     }, [imageCommand, clearImageCommand, running]);

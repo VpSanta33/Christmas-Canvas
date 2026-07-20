@@ -126,6 +126,9 @@ func (s *Store) CompleteRegistration(ctx context.Context, email string, challeng
 		return User{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('christmas-canvas:first-user', 0))`); err != nil {
+		return User{}, err
+	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	var passwordHash, displayName string
 	var storedCode, storedChallenge []byte
@@ -172,9 +175,6 @@ func (s *Store) CompleteRegistration(ctx context.Context, email string, challeng
 		email, passwordHash, displayName, role,
 	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Role, &u.EmailVerified)
 	if err != nil {
-		return User{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO user_quotas (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, u.ID); err != nil {
 		return User{}, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM email_verification_challenges WHERE email=$1`, email); err != nil {
