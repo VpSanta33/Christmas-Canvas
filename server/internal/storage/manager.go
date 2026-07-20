@@ -112,11 +112,17 @@ func NewManager(ctx context.Context, pool *pgxpool.Pool, cipher *Cipher, default
 	}
 	m.settings = settings
 	if settings.Enabled {
-		store, buildErr := buildObjectStore(ctx, settings)
-		if buildErr != nil {
-			m.lastErr = buildErr.Error()
+		if settings.AccessKey == "" || settings.SecretKey == "" {
+			if m.lastErr == "" {
+				m.lastErr = "对象存储密钥缺失，请在管理员后台重新保存 S3 配置"
+			}
 		} else {
-			m.store = store
+			store, buildErr := buildObjectStore(ctx, settings)
+			if buildErr != nil {
+				m.lastErr = buildErr.Error()
+			} else {
+				m.store = store
+			}
 		}
 	}
 	return m, nil
@@ -140,21 +146,44 @@ func (m *Manager) load(ctx context.Context) (resolvedSettings, error) {
 	if !settings.Configured {
 		return m.defaults, nil
 	}
+	var decryptErr error
 	if len(accessCipher) > 0 {
 		plain, err := m.cipher.Decrypt(accessCipher)
 		if err != nil {
-			return resolvedSettings{}, fmt.Errorf("decrypt storage access key: %w", err)
+			decryptErr = fmt.Errorf("decrypt storage access key: %w", err)
+		} else {
+			settings.AccessKey = string(plain)
 		}
-		settings.AccessKey = string(plain)
 	}
 	if len(secretCipher) > 0 {
 		plain, err := m.cipher.Decrypt(secretCipher)
-		if err != nil {
-			return resolvedSettings{}, fmt.Errorf("decrypt storage secret key: %w", err)
+		if err != nil && decryptErr == nil {
+			decryptErr = fmt.Errorf("decrypt storage secret key: %w", err)
+		} else if err == nil {
+			settings.SecretKey = string(plain)
 		}
-		settings.SecretKey = string(plain)
+	}
+	if decryptErr != nil {
+		// 配置密钥更换后，旧的 S3 密钥无法解密。不要让整个 API 进程退出，
+		// 先保留非敏感设置并允许管理员重新保存密钥；已有账号和画布仍可访问。
+		m.lastErr = decryptErr.Error() + "; 请在管理员后台重新保存 S3 配置"
+		return normalizeWithoutCredentialValidation(settings)
+	}
+	if settings.Enabled && (settings.AccessKey == "" || settings.SecretKey == "") {
+		return normalizeWithoutCredentialValidation(settings)
 	}
 	return normalizeResolved(settings)
+}
+
+func normalizeWithoutCredentialValidation(settings resolvedSettings) (resolvedSettings, error) {
+	enabled := settings.Enabled
+	settings.Enabled = false
+	normalized, err := normalizeResolved(settings)
+	if err != nil {
+		return settings, err
+	}
+	normalized.Enabled = enabled
+	return normalized, nil
 }
 
 func (m *Manager) AdminSettings() AdminSettings {

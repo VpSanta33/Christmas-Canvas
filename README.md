@@ -182,7 +182,7 @@ cd ../web && bun run typecheck && bun run build
 - 不要提交 `.env`、个人 API Key、SMTP 密码或 S3 SecretKey。
 - 第一个注册用户自动成为管理员，部署后应立即登录并确认管理员账号安全。
 - 第三方画布插件在页面上下文执行，只有在信任插件来源时才安装。
-- `CHANNEL_ENC_KEY` 丢失后无法解密后台已经保存的 SMTP/S3 密钥。
+- `CHANNEL_ENC_KEY` 丢失后无法解密后台已经保存的 SMTP/S3 密钥；API 会保留非敏感配置并启动，管理员需要在后台重新保存对应密钥。
 
 ## 开源协议
 

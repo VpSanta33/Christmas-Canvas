@@ -46,3 +46,16 @@ func TestNormalizeResolvedDefaultsMediaFolders(t *testing.T) {
 		t.Fatalf("unexpected media folders: image=%q video=%q", settings.ImagePathPrefix, settings.VideoPathPrefix)
 	}
 }
+
+func TestNormalizeWithoutCredentialValidationKeepsEnabledState(t *testing.T) {
+	settings, err := normalizeWithoutCredentialValidation(resolvedSettings{RuntimeDefaults: RuntimeDefaults{
+		Enabled: true, Provider: "s3", Endpoint: "s3.example.com", Bucket: "canvas",
+		ImagePathPrefix: "image", VideoPathPrefix: "Video",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.Enabled || settings.Endpoint != "s3.example.com" || settings.Bucket != "canvas" {
+		t.Fatalf("unexpected degraded settings: %#v", settings)
+	}
+}
