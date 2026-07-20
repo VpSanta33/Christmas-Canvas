@@ -13,6 +13,7 @@ import AdminPlatformPage from "@/pages/admin/platform";
 import AdminSecurityPage from "@/pages/admin/security";
 import AdminStoragePage from "@/pages/admin/storage";
 import AdminUsersPage from "@/pages/admin/users";
+import RouteErrorPage from "@/pages/error";
 import AssetsPage from "@/pages/assets";
 import CanvasPage from "@/pages/canvas";
 import CanvasProjectPage from "@/pages/canvas/project";
@@ -24,9 +25,10 @@ import WorkspacePage, { SharedCanvasPage } from "@/pages/workspace";
 import VideoPage from "@/pages/video";
 
 export const router = createBrowserRouter([
-    { path: "/login", element: <LoginPage /> },
-    { path: "/shared/:token", element: <SharedCanvasPage /> },
+    { path: "/login", element: <LoginPage />, errorElement: <RouteErrorPage /> },
+    { path: "/shared/:token", element: <SharedCanvasPage />, errorElement: <RouteErrorPage /> },
     {
+        errorElement: <RouteErrorPage />,
         element: (
             <RequireAuth>
                 <UserLayout>
@@ -51,6 +53,7 @@ export const router = createBrowserRouter([
         ],
     },
     {
+        errorElement: <RouteErrorPage />,
         element: (
             <RequireAdmin>
                 <AdminLayout>

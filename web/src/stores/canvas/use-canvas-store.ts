@@ -39,13 +39,30 @@ type PersistedCanvasState = Pick<CanvasStore, "projects">;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
 
+export function isCanvasProject(value: unknown): value is CanvasProject {
+    return Boolean(value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string" && (value as { id: string }).id.trim());
+}
+
+export function normalizeCanvasProjects(value: unknown): CanvasProject[] {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set<string>();
+    return value.filter((project): project is CanvasProject => {
+        if (!isCanvasProject(project) || seen.has(project.id)) return false;
+        seen.add(project.id);
+        return true;
+    });
+}
+
 const canvasStorage: PersistStorage<CanvasStore> = {
     getItem: async (name) => {
         const value = await localForageStorage.getItem(name);
         if (!value) return null;
         const parsed = JSON.parse(value) as StorageValue<CanvasStore>;
-        queuedPersistState = parsed.state as PersistedCanvasState;
-        return parsed;
+        const state = parsed.state as CanvasStore;
+        const projects = normalizeCanvasProjects(state?.projects);
+        const normalized = { ...parsed, state: { ...state, projects } };
+        queuedPersistState = { projects };
+        return normalized;
     },
     setItem: (name, value) => {
         const nextState = value.state as PersistedCanvasState;
@@ -103,21 +120,21 @@ export const useCanvasStore = create<CanvasStore>()(
                 return project.id;
             },
             openProject: (id) => {
-                return get().projects.find((item) => item.id === id) || null;
+                return normalizeCanvasProjects(get().projects).find((item) => item.id === id) || null;
             },
             renameProject: (id, title) =>
                 set((state) => ({
-                    projects: state.projects.map((project) => (project.id === id ? { ...project, title: title.trim() || project.title, updatedAt: new Date().toISOString() } : project)),
+                    projects: normalizeCanvasProjects(state.projects).map((project) => (project.id === id ? { ...project, title: title.trim() || project.title, updatedAt: new Date().toISOString() } : project)),
                 })),
             deleteProjects: (ids) =>
                 set((state) => {
-                    const projects = state.projects.filter((project) => !ids.includes(project.id));
+                    const projects = normalizeCanvasProjects(state.projects).filter((project) => !ids.includes(project.id));
                     return { projects };
                 }),
-            replaceProjects: (projects) => set({ projects }),
+            replaceProjects: (projects) => set({ projects: normalizeCanvasProjects(projects) }),
             updateProject: (id, patch) =>
                 set((state) => ({
-                    projects: state.projects.map((project) => (project.id === id ? { ...project, ...patch, updatedAt: new Date().toISOString() } : project)),
+                    projects: normalizeCanvasProjects(state.projects).map((project) => (project.id === id ? { ...project, ...patch, updatedAt: new Date().toISOString() } : project)),
                 })),
         }),
         {

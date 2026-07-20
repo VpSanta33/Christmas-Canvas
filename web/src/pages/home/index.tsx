@@ -1,8 +1,9 @@
 import { ArrowRight, ArrowUpRight, CalendarDays, Clapperboard, ImagePlus, Layers3, ListTodo, Maximize2, Plus, Sparkles, Video, Workflow } from "lucide-react";
 import { Button } from "antd";
+import { motion, useReducedMotion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 
-import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { normalizeCanvasProjects, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 
 const creationEntrances = [
     { number: "01", title: "图片生成", description: "从文字与参考图快速构建视觉", icon: ImagePlus, path: "/image" },
@@ -20,20 +21,55 @@ const quickActions = [
 
 const projectDateFormatter = new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" });
 
+const revealVariants = {
+    hidden: { opacity: 0, y: 22 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.55, ease: "easeOut" } },
+};
+
+const staticRevealVariants = {
+    hidden: { opacity: 1, y: 0 },
+    visible: { opacity: 1, y: 0 },
+};
+
+const listVariants = {
+    hidden: { opacity: 1 },
+    visible: { opacity: 1, transition: { delayChildren: 0.12, staggerChildren: 0.08 } },
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, x: 18 },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: "easeOut" } },
+};
+
+const staticItemVariants = {
+    hidden: { opacity: 1, x: 0 },
+    visible: { opacity: 1, x: 0 },
+};
+
+function formatProjectDate(value: string) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "未知时间" : projectDateFormatter.format(date);
+}
+
 export default function HomePage() {
     const navigate = useNavigate();
+    const reduceMotion = useReducedMotion();
     const hydrated = useCanvasStore((state) => state.hydrated);
     const projects = useCanvasStore((state) => state.projects);
-    const recentProjects = projects.slice(0, 3);
+    const validProjects = normalizeCanvasProjects(projects);
+    const recentProjects = validProjects.slice(0, 3);
+    const reveal = reduceMotion ? staticRevealVariants : revealVariants;
+    const item = reduceMotion ? staticItemVariants : itemVariants;
 
     return (
-        <main className="h-full overflow-y-auto bg-[#f6f6f3] text-stone-950 dark:bg-[#0d0d0c] dark:text-stone-100">
+        <motion.main initial="hidden" animate="visible" variants={reveal} className="h-full overflow-y-auto bg-[#f6f6f3] text-stone-950 dark:bg-[#0d0d0c] dark:text-stone-100">
             <section className="relative overflow-hidden border-b border-stone-200 bg-[#efefeb] dark:border-stone-800 dark:bg-[#11110f]">
                 <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(to_right,rgba(120,113,108,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(120,113,108,0.08)_1px,transparent_1px)] [background-size:56px_56px] dark:opacity-20" />
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-amber-500/30" />
+                {!reduceMotion ? <motion.div className="pointer-events-none absolute left-[14%] top-0 h-28 w-px origin-top bg-amber-500/60" animate={{ scaleY: [0.25, 1, 0.4], opacity: [0.25, 0.8, 0.25] }} transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut" }} /> : null}
                 <div className="relative mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16 lg:py-20">
                     <div className="grid gap-12 lg:grid-cols-[minmax(0,1.18fr)_minmax(340px,0.82fr)] lg:items-end lg:gap-20">
-                        <div className="max-w-3xl">
+                        <motion.div variants={reveal} className="max-w-3xl">
                             <div className="mb-4 inline-flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-amber-600 dark:text-amber-400">
                                 <Sparkles className="size-3.5" />
                                 SANTA CANVAS / START
@@ -51,18 +87,21 @@ export default function HomePage() {
                                     继续项目
                                 </Button>
                             </div>
-                        </div>
-                        <div className="lg:pl-2">
+                        </motion.div>
+                        <motion.div variants={reveal} transition={{ delay: 0.12 }} className="lg:pl-2">
                             <div className="flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] text-stone-400">
                                 <span>FOUR WAYS TO CREATE</span>
                                 <span>01 — 04</span>
                             </div>
-                            <div className="mt-4 border-t border-stone-300 dark:border-stone-700">
+                            <motion.div variants={listVariants} initial="hidden" animate="visible" className="mt-4 border-t border-stone-300 dark:border-stone-700">
                                 {creationEntrances.map(({ number, title, description, icon: Icon, path }) => (
-                                    <button
+                                    <motion.button
+                                        variants={item}
                                         key={path}
                                         type="button"
                                         onClick={() => navigate(path)}
+                                        whileHover={reduceMotion ? undefined : { x: 5 }}
+                                        whileTap={reduceMotion ? undefined : { scale: 0.99 }}
                                         className="group grid w-full grid-cols-[2rem_1fr_auto] items-center gap-3 border-b border-stone-300 py-4 text-left transition hover:border-stone-400 hover:bg-white/35 hover:px-3 dark:border-stone-700 dark:hover:border-stone-500 dark:hover:bg-white/[0.03]"
                                     >
                                         <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">{number}</span>
@@ -73,15 +112,15 @@ export default function HomePage() {
                                         <span className="grid size-9 place-items-center rounded-full border border-stone-300 bg-white/60 text-stone-600 transition group-hover:-rotate-6 group-hover:border-stone-900 group-hover:bg-stone-900 group-hover:text-white dark:border-stone-700 dark:bg-white/5 dark:text-stone-300 dark:group-hover:border-white dark:group-hover:bg-white dark:group-hover:text-stone-950">
                                             <Icon className="size-4" />
                                         </span>
-                                    </button>
+                                    </motion.button>
                                 ))}
-                            </div>
-                        </div>
+                            </motion.div>
+                        </motion.div>
                     </div>
                 </div>
             </section>
 
-            <section className="border-b border-stone-200 bg-[#f6f6f3] dark:border-stone-800 dark:bg-[#0d0d0c]">
+            <motion.section variants={reveal} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }} className="border-b border-stone-200 bg-[#f6f6f3] dark:border-stone-800 dark:bg-[#0d0d0c]">
                 <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-14">
                     <div className="grid gap-8 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)] lg:items-start lg:gap-16">
                         <div>
@@ -91,10 +130,12 @@ export default function HomePage() {
                         </div>
                         <div className="grid border-l border-stone-300 dark:border-stone-700 sm:grid-cols-2">
                             {quickActions.map(({ title, description, icon: Icon, path }) => (
-                                <button
+                                <motion.button
                                     key={path}
                                     type="button"
                                     onClick={() => navigate(path)}
+                                    whileHover={reduceMotion ? undefined : { y: -4 }}
+                                    whileTap={reduceMotion ? undefined : { scale: 0.985 }}
                                     className="group flex min-h-32 items-start justify-between gap-4 border-b border-r border-t border-stone-300 px-5 py-5 text-left transition first:border-t-0 hover:bg-white/55 sm:min-h-36 sm:even:border-t-0 dark:border-stone-700 dark:hover:bg-white/[0.03]"
                                 >
                                     <span>
@@ -105,14 +146,14 @@ export default function HomePage() {
                                         <span className="mt-1 block text-xs leading-5 text-stone-500 dark:text-stone-400">{description}</span>
                                     </span>
                                     <ArrowUpRight className="mt-1 size-4 shrink-0 text-stone-400 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-stone-950 dark:group-hover:text-white" />
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     </div>
                 </div>
-            </section>
+            </motion.section>
 
-            <section className="border-b border-stone-200 bg-white dark:border-stone-800 dark:bg-[#11110f]">
+            <motion.section variants={reveal} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.16 }} className="border-b border-stone-200 bg-white dark:border-stone-800 dark:bg-[#11110f]">
                 <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-14">
                     <div className="flex flex-wrap items-end justify-between gap-4 border-b border-stone-200 pb-5 dark:border-stone-800">
                         <div>
@@ -120,7 +161,7 @@ export default function HomePage() {
                             <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">最近项目</h2>
                         </div>
                         <div className="flex items-center gap-4">
-                            <span className="text-xs text-stone-400">{hydrated ? `${projects.length} 个画布` : "正在读取"}</span>
+                            <span className="text-xs text-stone-400">{hydrated ? `${validProjects.length} 个画布` : "正在读取"}</span>
                             <Button type="text" icon={<ArrowRight className="size-4" />} iconPlacement="end" onClick={() => navigate("/canvas")}>
                                 打开画布库
                             </Button>
@@ -131,10 +172,11 @@ export default function HomePage() {
                     ) : recentProjects.length ? (
                         <div className="divide-y divide-stone-200 dark:divide-stone-800">
                             {recentProjects.map((project, index) => (
-                                <button
+                                <motion.button
                                     key={project.id}
                                     type="button"
                                     onClick={() => navigate(`/canvas/${project.id}`)}
+                                    whileHover={reduceMotion ? undefined : { x: 5 }}
                                     className="group flex w-full items-center gap-4 py-5 text-left transition hover:px-3 hover:bg-stone-50 dark:hover:bg-white/[0.03]"
                                 >
                                     <span className="grid size-10 shrink-0 place-items-center border border-stone-200 bg-stone-50 text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
@@ -144,11 +186,11 @@ export default function HomePage() {
                                         <span className="block truncate text-sm font-medium text-stone-900 dark:text-stone-100">{project.title}</span>
                                         <span className="mt-1 flex items-center gap-1.5 text-xs text-stone-400">
                                             <CalendarDays className="size-3.5" />
-                                            更新于 {projectDateFormatter.format(new Date(project.updatedAt))}
+                                            更新于 {formatProjectDate(project.updatedAt)}
                                         </span>
                                     </span>
                                     <ArrowUpRight className="size-4 shrink-0 text-stone-300 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-stone-900 dark:text-stone-600 dark:group-hover:text-stone-100" />
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     ) : (
@@ -162,9 +204,9 @@ export default function HomePage() {
                         </div>
                     )}
                 </div>
-            </section>
+            </motion.section>
 
-            <section className="bg-[#efefeb] dark:bg-[#11110f]">
+            <motion.section variants={reveal} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.16 }} className="bg-[#efefeb] dark:bg-[#11110f]">
                 <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-14">
                     <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr] lg:gap-16">
                         <div>
@@ -177,16 +219,16 @@ export default function HomePage() {
                                 { number: "02", title: "编排", description: "在画布与导演台里连接素材、场景和生成结果。" },
                                 { number: "03", title: "沉淀", description: "保存版本、任务与媒体，让下一次创作接着走。" },
                             ].map(({ number, title, description }) => (
-                                <div key={number} className="border-b border-r border-t border-stone-300 px-5 py-5 first:border-t-0 sm:border-t-0 dark:border-stone-700">
+                                <motion.div key={number} variants={item} className="border-b border-r border-t border-stone-300 px-5 py-5 first:border-t-0 sm:border-t-0 dark:border-stone-700">
                                     <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">{number}</span>
                                     <h3 className="mt-5 text-sm font-semibold">{title}</h3>
                                     <p className="mt-2 text-xs leading-6 text-stone-500 dark:text-stone-400">{description}</p>
-                                </div>
+                                </motion.div>
                             ))}
                         </div>
                     </div>
                 </div>
-            </section>
-        </main>
+            </motion.section>
+        </motion.main>
     );
 }
