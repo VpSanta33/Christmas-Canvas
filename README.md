@@ -57,7 +57,7 @@ cd Christmas-Canvas
 ./deploy.sh
 ```
 
-脚本会在没有 `.env` 时生成随机的 PostgreSQL、Redis、JWT 和后台敏感配置加密密钥，然后构建并启动容器。访问 <http://localhost:3000>，健康检查为 <http://localhost:3000/healthz>。
+脚本会在没有 `.env` 时生成随机的 PostgreSQL、Redis、JWT 和后台敏感配置加密密钥，然后构建并启动容器。对于已有 PostgreSQL 数据卷，脚本会在启动 API 前把数据库角色密码同步为当前 `.env` 中的值，避免升级后出现 SASL 密码认证失败。访问 <http://localhost:3000>，健康检查为 <http://localhost:3000/healthz>。
 
 也可以手动执行：
 
@@ -79,6 +79,8 @@ docker compose logs -f --tail=100 api
 ```
 
 `docker compose down` 不会删除数据卷。除非确认数据已备份，否则不要使用 `docker compose down -v`。升级前建议备份 PostgreSQL 卷和已配置的 S3 数据。
+
+如果旧版脚本已经导致 API 报 `password authentication failed`，请拉取最新代码后重新执行 `./deploy.sh`。脚本会保留现有数据并修正数据库角色密码，不需要删除 `pgdata`。
 
 ## 个人 API 配置
 

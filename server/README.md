@@ -28,7 +28,7 @@ go run ./cmd/api
 ./deploy.sh
 ```
 
-根目录脚本会生成随机密钥并启动前端、API、PostgreSQL 和 Redis。不要将 `.env` 提交到 Git。
+根目录脚本会生成随机密钥并启动前端、API、PostgreSQL 和 Redis；已有 PostgreSQL 数据卷会先同步数据库角色密码，再启动 API。不要将 `.env` 提交到 Git，也不要为了修复密码问题删除数据库卷。
 
 ## 目录
 

@@ -44,6 +44,33 @@ else
     echo "检测到现有 .env，保留当前数据库和密钥配置。"
 fi
 
-docker compose up --build -d
+echo "正在启动 PostgreSQL 和 Redis..."
+docker compose up -d postgres redis
+
+attempt=0
+until docker compose exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 60 ]; then
+        echo "PostgreSQL 在 120 秒内未就绪，最近日志如下：" >&2
+        docker compose logs --tail=100 postgres >&2
+        exit 1
+    fi
+    sleep 2
+done
+
+# POSTGRES_PASSWORD 只在首次初始化数据卷时生效。旧数据卷配合新生成的 .env 时，
+# 需要通过本地 Unix socket 同步角色密码，否则 API 会因 SASL 认证失败不断重启。
+echo "正在同步 PostgreSQL 角色密码..."
+docker compose exec -T postgres sh -c '
+    psql -v ON_ERROR_STOP=1 \
+        -U "$POSTGRES_USER" \
+        -d "$POSTGRES_DB" \
+        -v new_password="$POSTGRES_PASSWORD"
+' <<'SQL'
+SELECT format('ALTER ROLE %I WITH PASSWORD %L', current_user, :'new_password') \gexec
+SQL
+
+echo "正在构建并启动 API 和 Web..."
+docker compose up --build -d api app
 docker compose ps
 echo "部署完成： http://localhost:${WEB_PORT:-3000}"
