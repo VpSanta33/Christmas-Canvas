@@ -44,6 +44,10 @@ export const router = createBrowserRouter([
             { path: "/", element: <HomePage /> },
             { path: "/image", element: <ImagePage /> },
             { path: "/video", element: <VideoPage /> },
+            {
+                path: "/director",
+                lazy: async () => ({ Component: (await import("@/pages/director")).default }),
+            },
             { path: "/assets", element: <AssetsPage /> },
             { path: "/creators", element: <CreatorsPage /> },
             { path: "/creators/:id", element: <CreatorProfilePage /> },
