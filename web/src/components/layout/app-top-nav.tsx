@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { usePlatformStore } from "@/stores/use-platform-store";
 
-const PRIMARY_TOOL_SLUGS = new Set<NavigationToolSlug>(["canvas", "image", "video", "director", "skills", "workspace"]);
+const PRIMARY_TOOL_SLUGS = new Set<NavigationToolSlug>(["canvas", "image", "video", "director", "creators", "tasks", "workspace"]);
 const primaryNavigationTools = navigationTools.filter((tool) => PRIMARY_TOOL_SLUGS.has(tool.slug));
 const secondaryNavigationTools = navigationTools.filter((tool) => !PRIMARY_TOOL_SLUGS.has(tool.slug));
 
@@ -112,22 +112,24 @@ export function AppTopNav() {
                                         </Link>
                                     );
                                 })}
-                                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]} placement="bottomRight">
-                                    <button
-                                        type="button"
-                                        className={cn(
-                                            "relative flex h-14 shrink-0 items-center gap-1.5 text-sm leading-6 transition after:absolute after:inset-x-0 after:bottom-0 after:h-px",
-                                            moreActive
-                                                ? "font-medium text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100"
-                                                : "text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
-                                        )}
-                                        aria-label="更多导航"
-                                    >
-                                        <MoreHorizontal className="size-4" />
-                                        <span>更多</span>
-                                        <ChevronDown className="size-3" />
-                                    </button>
-                                </Dropdown>
+                                {moreMenuItems.length ? (
+                                    <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]} placement="bottomRight">
+                                        <button
+                                            type="button"
+                                            className={cn(
+                                                "relative flex h-14 shrink-0 items-center gap-1.5 text-sm leading-6 transition after:absolute after:inset-x-0 after:bottom-0 after:h-px",
+                                                moreActive
+                                                    ? "font-medium text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100"
+                                                    : "text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
+                                            )}
+                                            aria-label="更多导航"
+                                        >
+                                            <MoreHorizontal className="size-4" />
+                                            <span>更多</span>
+                                            <ChevronDown className="size-3" />
+                                        </button>
+                                    </Dropdown>
+                                ) : null}
                             </nav>
                         </div>
 

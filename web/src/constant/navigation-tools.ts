@@ -1,4 +1,4 @@
-import { Clapperboard, ImagePlus, Images, Layers3, ListTodo, Maximize2, Sparkles, UsersRound, Video } from "lucide-react";
+import { Clapperboard, ImagePlus, Layers3, ListTodo, Maximize2, UsersRound, Video } from "lucide-react";
 
 export const navigationTools = [
     {
@@ -27,11 +27,6 @@ export const navigationTools = [
         icon: UsersRound,
     },
     {
-        slug: "skills",
-        label: "Skill 中心",
-        icon: Sparkles,
-    },
-    {
         slug: "tasks",
         label: "任务中心",
         icon: ListTodo,
@@ -40,11 +35,6 @@ export const navigationTools = [
         slug: "workspace",
         label: "工作空间",
         icon: Layers3,
-    },
-    {
-        slug: "assets",
-        label: "我的资产",
-        icon: Images,
     },
 ] as const;
 
