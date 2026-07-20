@@ -146,7 +146,7 @@ export default function LoginPage() {
                                 {[
                                     { icon: ImagePlus, label: "生成", detail: "图片与视频" },
                                     { icon: Workflow, label: "编排", detail: "无限画布" },
-                                    { icon: Check, label: "沉淀", detail: "资产与 Skill" },
+                                    { icon: Check, label: "沉淀", detail: "资产与工作流" },
                                 ].map(({ icon: Icon, label, detail }) => (
                                     <div key={label} className="min-w-0 border-l border-stone-300 pl-2 first:border-l-0 first:pl-0 dark:border-white/15 lg:pl-3">
                                         <Icon className="mb-2 size-4 text-amber-600 dark:text-amber-300" />
@@ -247,9 +247,9 @@ export default function LoginPage() {
                             <>
                                 <div className="mb-5">
                                     <div className="mb-2 text-[11px] font-semibold text-stone-400 dark:text-stone-500 md:mb-3 md:text-xs">ACCOUNT ACCESS</div>
-                                    <h2 className="text-2xl font-semibold tracking-normal sm:text-3xl">{mode === "login" ? "欢迎回来" : "创建创作者账号"}</h2>
+                                    <h2 className="text-2xl font-semibold tracking-normal sm:text-3xl">{mode === "login" ? "欢迎回来" : "创建账号"}</h2>
                                     <p className="mt-1.5 text-sm leading-6 text-stone-500 dark:text-stone-400 md:mt-2">
-                                        {mode === "login" ? "继续你的画布、任务与创作资产。" : platform.emailVerificationRequired ? "建立创作者主页，验证邮箱后保存并分享工作流。" : "建立你的创作者主页，保存并分享完整工作流。"}
+                                        {mode === "login" ? "继续你的画布、任务与创作资产。" : platform.emailVerificationRequired ? "验证邮箱后保存并分享工作流。" : "保存并分享你的完整工作流。"}
                                     </p>
                                 </div>
 
@@ -275,7 +275,7 @@ export default function LoginPage() {
                                     {mode === "register" ? (
                                         <div className="grid gap-x-3 md:grid-cols-2">
                                             <Form.Item name="displayName" label="昵称">
-                                                <Input prefix={<UserRound className="size-4 text-stone-400" />} autoComplete="nickname" placeholder="创作者名称" />
+                                                <Input prefix={<UserRound className="size-4 text-stone-400" />} autoComplete="nickname" placeholder="显示名称" />
                                             </Form.Item>
                                             <Form.Item name="email" label="邮箱" rules={[{ required: true, type: "email", message: "请输入有效邮箱" }]}>
                                                 <Input prefix={<Mail className="size-4 text-stone-400" />} autoComplete="email" placeholder="name@example.com" />

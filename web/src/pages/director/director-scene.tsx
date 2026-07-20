@@ -12,6 +12,7 @@ export type DirectorSceneHandle = {
 type DirectorSceneProps = {
     shot: DirectorShot;
     panoramaUrl?: string;
+    dark: boolean;
     onCameraChange: (angles: Pick<DirectorShot, "yaw" | "pitch">) => void;
 };
 
@@ -21,6 +22,7 @@ type SceneRuntime = {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     target: THREE.Vector3;
+    studioSet: THREE.Group;
     roll: number;
     lighting: {
         hemisphere: THREE.HemisphereLight;
@@ -48,15 +50,19 @@ const shotTargetHeight: Record<DirectorShot["shotSize"], number> = {
     "extreme-close": 1.94,
 };
 
-export const DirectorScene = forwardRef<DirectorSceneHandle, DirectorSceneProps>(function DirectorScene({ shot, panoramaUrl, onCameraChange }, ref) {
+export const DirectorScene = forwardRef<DirectorSceneHandle, DirectorSceneProps>(function DirectorScene({ shot, panoramaUrl, dark, onCameraChange }, ref) {
     const hostRef = useRef<HTMLDivElement>(null);
     const runtimeRef = useRef<SceneRuntime | null>(null);
     const textureRef = useRef<THREE.Texture | null>(null);
     const currentShotRef = useRef(shot);
     const cameraChangeRef = useRef(onCameraChange);
+    const darkRef = useRef(dark);
+    const panoramaRef = useRef(panoramaUrl);
 
     currentShotRef.current = shot;
     cameraChangeRef.current = onCameraChange;
+    darkRef.current = dark;
+    panoramaRef.current = panoramaUrl;
 
     useImperativeHandle(ref, () => ({
         capture: () => {
@@ -89,8 +95,9 @@ export const DirectorScene = forwardRef<DirectorSceneHandle, DirectorSceneProps>
         host.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color("#101416");
-        scene.fog = new THREE.Fog("#101416", 18, 48);
+        const initialDark = darkRef.current;
+        scene.background = new THREE.Color(sceneBackground(initialDark));
+        scene.fog = new THREE.Fog(sceneBackground(initialDark), 18, 48);
 
         const camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.05, 160);
         const target = new THREE.Vector3(0, 1.55, 0);
@@ -118,10 +125,12 @@ export const DirectorScene = forwardRef<DirectorSceneHandle, DirectorSceneProps>
         rim.position.set(1, 6, -5);
         rim.target.position.set(0, 1.4, 0);
         scene.add(hemisphere, key, fill, rim, rim.target);
-        scene.add(createStudioSet());
+        const studioSet = createStudioSet(initialDark);
+        scene.add(studioSet);
 
-        const runtime: SceneRuntime = { renderer, scene, camera, controls, target, roll: 0, lighting: { hemisphere, key, fill, rim } };
+        const runtime: SceneRuntime = { renderer, scene, camera, controls, target, studioSet, roll: 0, lighting: { hemisphere, key, fill, rim } };
         runtimeRef.current = runtime;
+        applySceneTheme(runtime, initialDark, Boolean(panoramaRef.current));
         applyLighting(runtime, currentShotRef.current.lighting);
         applyShotCamera(runtime, currentShotRef.current);
 
@@ -185,13 +194,18 @@ export const DirectorScene = forwardRef<DirectorSceneHandle, DirectorSceneProps>
 
     useEffect(() => {
         const runtime = runtimeRef.current;
+        if (runtime) applySceneTheme(runtime, dark, Boolean(panoramaUrl));
+    }, [dark, panoramaUrl]);
+
+    useEffect(() => {
+        const runtime = runtimeRef.current;
         if (!runtime) return;
         textureRef.current?.dispose();
         textureRef.current = null;
         runtime.scene.environment = null;
-        runtime.scene.fog = new THREE.Fog("#101416", 18, 48);
+        runtime.scene.fog = new THREE.Fog(sceneBackground(dark), 18, 48);
         if (!panoramaUrl) {
-            runtime.scene.background = new THREE.Color("#101416");
+            runtime.scene.background = new THREE.Color(sceneBackground(dark));
             return;
         }
         let cancelled = false;
@@ -208,13 +222,13 @@ export const DirectorScene = forwardRef<DirectorSceneHandle, DirectorSceneProps>
             },
             undefined,
             () => {
-                if (!cancelled) runtime.scene.background = new THREE.Color("#101416");
+                if (!cancelled) runtime.scene.background = new THREE.Color(sceneBackground(dark));
             },
         );
         return () => {
             cancelled = true;
         };
-    }, [panoramaUrl]);
+    }, [dark, panoramaUrl]);
 
     return <div ref={hostRef} className="director-scene-host" />;
 });
@@ -243,6 +257,27 @@ function renderScene(runtime: SceneRuntime) {
     runtime.renderer.render(runtime.scene, runtime.camera);
 }
 
+function sceneBackground(dark: boolean) {
+    return dark ? "#101416" : "#eef1ee";
+}
+
+function applySceneTheme(runtime: SceneRuntime, dark: boolean, hasPanorama: boolean) {
+    const background = sceneBackground(dark);
+    if (!hasPanorama || !(runtime.scene.background instanceof THREE.Texture)) runtime.scene.background = new THREE.Color(background);
+    runtime.scene.fog = hasPanorama ? null : new THREE.Fog(background, 18, 48);
+    setMaterialColor(runtime.studioSet.getObjectByName("director-floor"), dark ? "#242a2b" : "#c1c7c3");
+    setMaterialColor(runtime.studioSet.getObjectByName("director-wall"), dark ? "#171c1d" : "#e3e7e4");
+    setMaterialColor(runtime.studioSet.getObjectByName("director-platform"), dark ? "#111617" : "#8e9792");
+}
+
+function setMaterialColor(object: THREE.Object3D | undefined, color: string) {
+    if (!(object instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach((material) => {
+        if ("color" in material) material.color.set(color);
+    });
+}
+
 function applyLighting(runtime: SceneRuntime, preset: DirectorLighting) {
     const { hemisphere, key, fill, rim } = runtime.lighting;
     const presets: Record<DirectorLighting, { hemi: [string, string, number]; key: [string, number, [number, number, number]]; fill: [string, number, [number, number, number]]; rim: [string, number, [number, number, number]]; exposure: number }> = {
@@ -268,15 +303,17 @@ function applyLighting(runtime: SceneRuntime, preset: DirectorLighting) {
     runtime.renderer.toneMappingExposure = value.exposure;
 }
 
-function createStudioSet() {
+function createStudioSet(dark: boolean) {
     const set = new THREE.Group();
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: "#242a2b", roughness: 0.72, metalness: 0.05 });
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: dark ? "#242a2b" : "#c1c7c3", roughness: 0.72, metalness: 0.05 });
     const floor = new THREE.Mesh(new THREE.CircleGeometry(18, 96), floorMaterial);
+    floor.name = "director-floor";
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     set.add(floor);
 
-    const wall = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 9, 80, 1, true), new THREE.MeshStandardMaterial({ color: "#171c1d", roughness: 0.86, side: THREE.BackSide }));
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 9, 80, 1, true), new THREE.MeshStandardMaterial({ color: dark ? "#171c1d" : "#e3e7e4", roughness: 0.86, side: THREE.BackSide }));
+    wall.name = "director-wall";
     wall.position.y = 4.5;
     wall.receiveShadow = true;
     set.add(wall);
@@ -287,7 +324,8 @@ function createStudioSet() {
     set.add(createGift(-2.25, 0.17, 0.48, "#e7ddd0", "#aa2730"));
     set.add(createGift(2.2, 0.26, 0.68, "#234c45", "#d6af56"));
 
-    const platform = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.55, 0.12, 64), new THREE.MeshStandardMaterial({ color: "#111617", roughness: 0.45, metalness: 0.3 }));
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.55, 0.12, 64), new THREE.MeshStandardMaterial({ color: dark ? "#111617" : "#8e9792", roughness: 0.45, metalness: 0.3 }));
+    platform.name = "director-platform";
     platform.position.y = 0.06;
     platform.receiveShadow = true;
     set.add(platform);

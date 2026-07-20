@@ -30,8 +30,6 @@ export default function AdminOverviewPage() {
         ? [
               { label: "用户总数", value: data.users.total, hint: `${data.users.disabled} 已禁用` },
               { label: "媒体存储", value: formatBytes(data.storage.bytes), hint: `${data.storage.files} 个文件` },
-              { label: "待审核作品", value: data.content.contestPending },
-              { label: "已通过作品", value: data.content.contestApproved },
           ]
         : [];
 
@@ -39,14 +37,14 @@ export default function AdminOverviewPage() {
         <div>
             <header className="mb-6">
                 <h1 className="text-xl font-semibold text-stone-950 dark:text-stone-100">系统概览</h1>
-                <p className="mt-1 text-sm text-stone-500">用户、媒体存储与社区内容概览</p>
+                <p className="mt-1 text-sm text-stone-500">用户与媒体存储概览</p>
             </header>
             {loading ? (
                 <div className="flex justify-center py-20">
                     <Spin />
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {stats.map((stat) => (
                         <Card key={stat.label} size="small">
                             <div className="text-sm text-stone-500">{stat.label}</div>

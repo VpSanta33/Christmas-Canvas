@@ -319,9 +319,7 @@ async function resolveSeedanceImageUrl(config: AiConfig, image: ReferenceImage) 
 async function resolveViraldanceImageUrl(image: ReferenceImage) {
     const directUrl = image.url || image.dataUrl;
     if (isPublicMediaUrl(directUrl)) return directUrl;
-    const dataUrl = await imageToDataUrl(image);
-    if (!dataUrl) throw new Error("Viraldance 参考图读取失败，请换一张图片或重新上传");
-    return dataUrl;
+    throw new Error("Viraldance 参考图必须是公网可访问的图片直链；浏览器本地图片无法直接提交，请先填写公网图片 URL");
 }
 
 async function resolveSeedanceVideoUrl(video: ReferenceVideo) {
@@ -486,15 +484,16 @@ function readAxiosError(error: unknown, fallback: string) {
     if (axios.isCancel(error)) return "请求已取消";
     if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; message?: string; code?: number | string }>(error)) {
         const responseData = error.response?.data;
-        return readApiErrorMessage(responseData) || statusMessage(error.response?.status, fallback);
+        return readApiErrorMessage(responseData) || statusMessage(error.response?.status, fallback, error.code);
     }
     if (error instanceof DOMException && error.name === "AbortError") return "请求已取消";
     return error instanceof Error ? readApiErrorMessage(error.message) || error.message : fallback;
 }
 
-function statusMessage(status: number | undefined, fallback: string) {
+function statusMessage(status: number | undefined, fallback: string, code?: string) {
     if (status === 401 || status === 403) return "鉴权失败，请检查 API Key、套餐权限或模型权限";
     if (status === 429) return "请求被限流或额度不足，请稍后重试";
+    if (!status && (code === "ERR_NETWORK" || code === "ECONNABORTED")) return `${fallback}：无法连接个人 API，请检查接口地址、HTTPS 和上游 CORS 配置`;
     return status ? `${fallback}（${status}）` : fallback;
 }
 

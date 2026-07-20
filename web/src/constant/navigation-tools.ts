@@ -1,4 +1,4 @@
-import { Clapperboard, ImagePlus, Layers3, ListTodo, Maximize2, UsersRound, Video } from "lucide-react";
+import { Clapperboard, ImagePlus, Layers3, ListTodo, Maximize2, Video } from "lucide-react";
 
 export const navigationTools = [
     {
@@ -20,11 +20,6 @@ export const navigationTools = [
         slug: "director",
         label: "导演台",
         icon: Clapperboard,
-    },
-    {
-        slug: "creators",
-        label: "创作者",
-        icon: UsersRound,
     },
     {
         slug: "tasks",

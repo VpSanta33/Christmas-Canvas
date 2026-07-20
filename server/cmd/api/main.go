@@ -18,7 +18,6 @@ import (
 	"github.com/basketikun/infinite-canvas/server/internal/auth"
 	"github.com/basketikun/infinite-canvas/server/internal/canvas"
 	"github.com/basketikun/infinite-canvas/server/internal/config"
-	"github.com/basketikun/infinite-canvas/server/internal/contest"
 	"github.com/basketikun/infinite-canvas/server/internal/db"
 	filepkg "github.com/basketikun/infinite-canvas/server/internal/file"
 	"github.com/basketikun/infinite-canvas/server/internal/platform"
@@ -97,7 +96,6 @@ func main() {
 	fileHandler := filepkg.NewHandler(pool, storageManager)
 	adminHandler := admin.NewHandler(pool, userStore, storageManager)
 	storageAdmin := storage.NewAdminHandler(storageManager)
-	contestHandler := contest.NewHandler(pool, storageManager)
 	workspaceHandler := workspace.NewHandler(pool, storageManager)
 
 	deps := router.Deps{
@@ -109,7 +107,6 @@ func main() {
 		FileHandler:      fileHandler,
 		AdminHandler:     adminHandler,
 		StorageAdmin:     storageAdmin,
-		ContestHandler:   contestHandler,
 		WorkspaceHandler: workspaceHandler,
 		QuotaSvc:         quotaSvc,
 		UserStore:        userStore,

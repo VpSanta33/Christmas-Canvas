@@ -1,8 +1,7 @@
-import { Bot, ChevronDown, Menu, MoreHorizontal, Trophy } from "lucide-react";
-import { Button, Dropdown, Tooltip } from "antd";
+import { Bot, Menu } from "lucide-react";
+import { Button, Tooltip } from "antd";
 import { Link, useLocation } from "react-router-dom";
 
-import { isBackendMode } from "@/constant/runtime-config";
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
@@ -12,9 +11,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { usePlatformStore } from "@/stores/use-platform-store";
 
-const PRIMARY_TOOL_SLUGS = new Set<NavigationToolSlug>(["canvas", "image", "video", "director", "creators", "tasks", "workspace"]);
+const PRIMARY_TOOL_SLUGS = new Set<NavigationToolSlug>(["canvas", "image", "video", "director", "tasks", "workspace"]);
 const primaryNavigationTools = navigationTools.filter((tool) => PRIMARY_TOOL_SLUGS.has(tool.slug));
-const secondaryNavigationTools = navigationTools.filter((tool) => !PRIMARY_TOOL_SLUGS.has(tool.slug));
 
 export function AppTopNav() {
     const { pathname } = useLocation();
@@ -30,34 +28,6 @@ export function AppTopNav() {
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
     const slug = pathname.split("/").filter(Boolean)[0];
     const activeToolSlug = navigationTools.some((tool) => tool.slug === slug) ? (slug as NavigationToolSlug) : undefined;
-    const moreActive = secondaryNavigationTools.some((tool) => tool.slug === activeToolSlug) || pathname.startsWith("/contest");
-    const moreMenuItems = [
-        ...secondaryNavigationTools.map((tool) => {
-            const Icon = tool.icon;
-            return {
-                key: tool.slug,
-                label: (
-                    <Link to={`/${tool.slug}`} className="flex items-center gap-2">
-                        <Icon className="size-4" />
-                        {tool.label}
-                    </Link>
-                ),
-            };
-        }),
-        ...(isBackendMode()
-            ? [
-                  {
-                      key: "contest",
-                      label: (
-                          <Link to="/contest" className="flex items-center gap-2">
-                              <Trophy className="size-4" />
-                              创作者大赛
-                          </Link>
-                      ),
-                  },
-              ]
-            : []),
-    ];
 
     useEffect(() => {
         if (autoConnectRef.current || agentEnabled || agentConnected || !agentToken.trim()) return;
@@ -112,24 +82,6 @@ export function AppTopNav() {
                                         </Link>
                                     );
                                 })}
-                                {moreMenuItems.length ? (
-                                    <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]} placement="bottomRight">
-                                        <button
-                                            type="button"
-                                            className={cn(
-                                                "relative flex h-14 shrink-0 items-center gap-1.5 text-sm leading-6 transition after:absolute after:inset-x-0 after:bottom-0 after:h-px",
-                                                moreActive
-                                                    ? "font-medium text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100"
-                                                    : "text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
-                                            )}
-                                            aria-label="更多导航"
-                                        >
-                                            <MoreHorizontal className="size-4" />
-                                            <span>更多</span>
-                                            <ChevronDown className="size-3" />
-                                        </button>
-                                    </Dropdown>
-                                ) : null}
                             </nav>
                         </div>
 

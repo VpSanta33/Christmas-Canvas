@@ -1,11 +1,6 @@
-import { ArrowRight, Film, Heart, ImagePlus, Sparkles, Users, Video, Workflow } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Button, Empty, Skeleton } from "antd";
+import { ArrowRight, ImagePlus, Sparkles, Video, Workflow } from "lucide-react";
+import { Button } from "antd";
 import { useNavigate } from "react-router-dom";
-
-import { isBackendMode } from "@/constant/runtime-config";
-import { fetchShowcaseEntries, type ContestEntry, type ContestStats } from "@/services/api/contest";
-import { ShowcaseWorkCard } from "./showcase-work-card";
 
 const creationEntrances = [
     { number: "01", title: "图片生成", description: "从文字与参考图快速构建视觉", icon: ImagePlus, path: "/image" },
@@ -15,28 +10,6 @@ const creationEntrances = [
 
 export default function HomePage() {
     const navigate = useNavigate();
-    const backendMode = isBackendMode();
-    const [works, setWorks] = useState<ContestEntry[]>([]);
-    const [workStats, setWorkStats] = useState<ContestStats>({ entries: 0, creators: 0, likes: 0 });
-    const [worksLoading, setWorksLoading] = useState(backendMode);
-
-    useEffect(() => {
-        if (!backendMode) {
-            return undefined;
-        }
-        let alive = true;
-        void fetchShowcaseEntries(9)
-            .then((result) => {
-                if (!alive) return;
-                setWorks(result.items);
-                setWorkStats(result.stats);
-            })
-            .catch(() => undefined)
-            .finally(() => alive && setWorksLoading(false));
-        return () => {
-            alive = false;
-        };
-    }, [backendMode]);
 
     return (
         <main className="h-full overflow-y-auto bg-[#f6f6f3] text-stone-950 dark:bg-[#0d0d0c] dark:text-stone-100">
@@ -59,9 +32,6 @@ export default function HomePage() {
                             <div className="mt-8 flex flex-wrap gap-3">
                                 <Button type="primary" size="large" icon={<ArrowRight className="size-4" />} iconPlacement="end" onClick={() => navigate("/canvas")}>
                                     开始创作
-                                </Button>
-                                <Button size="large" onClick={() => document.getElementById("community-works")?.scrollIntoView({ behavior: "smooth" })}>
-                                    浏览用户作品
                                 </Button>
                             </div>
                         </div>
@@ -92,58 +62,6 @@ export default function HomePage() {
                         </div>
                     </div>
                 </div>
-            </section>
-
-            <section id="community-works" className="mx-auto max-w-7xl scroll-mt-20 px-5 py-12 sm:px-8 sm:py-16">
-                <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-                    <div>
-                        <div className="mb-2 text-xs font-semibold tracking-[0.12em] text-stone-400">COMMUNITY WORKS</div>
-                        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">用户作品</h2>
-                        <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">查看社区创作者上传并通过审核的作品，发现真实的创作过程。</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4">
-                        <div className="hidden items-center gap-4 text-xs text-stone-400 sm:flex">
-                            <span className="inline-flex items-center gap-1.5">
-                                <Film className="size-3.5" />
-                                {workStats.entries} 件作品
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
-                                <Users className="size-3.5" />
-                                {workStats.creators} 位创作者
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
-                                <Heart className="size-3.5" />
-                                {workStats.likes} 次点赞
-                            </span>
-                        </div>
-                        <Button type="text" icon={<ArrowRight className="size-4" />} iconPlacement="end" onClick={() => navigate("/contest")}>
-                            查看全部
-                        </Button>
-                    </div>
-                </div>
-                {worksLoading ? (
-                    <div className="grid auto-rows-[230px] gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {Array.from({ length: 9 }, (_, index) => (
-                            <div key={index} className={index === 0 ? "overflow-hidden rounded-xl md:col-span-2 md:row-span-2" : "overflow-hidden rounded-xl"}>
-                                <Skeleton.Image active className="!size-full !rounded-none" />
-                            </div>
-                        ))}
-                    </div>
-                ) : works.length ? (
-                    <div className="grid auto-rows-[230px] gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {works.map((entry, index) => (
-                            <ShowcaseWorkCard key={entry.id} entry={entry} featured={index === 0} onOpen={(id) => navigate(`/contest?entry=${encodeURIComponent(id)}`)} />
-                        ))}
-                    </div>
-                ) : (
-                    <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-stone-300 bg-white/50 dark:border-stone-700 dark:bg-stone-900/30">
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={backendMode ? "还没有公开的用户作品" : "连接后端后可展示用户作品"}>
-                            <Button type="primary" onClick={() => navigate("/contest")}>
-                                上传第一件作品
-                            </Button>
-                        </Empty>
-                    </div>
-                )}
             </section>
         </main>
     );

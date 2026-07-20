@@ -16,7 +16,6 @@ import (
 	"github.com/basketikun/infinite-canvas/server/internal/auth"
 	"github.com/basketikun/infinite-canvas/server/internal/canvas"
 	"github.com/basketikun/infinite-canvas/server/internal/config"
-	"github.com/basketikun/infinite-canvas/server/internal/contest"
 	filepkg "github.com/basketikun/infinite-canvas/server/internal/file"
 	"github.com/basketikun/infinite-canvas/server/internal/middleware"
 	"github.com/basketikun/infinite-canvas/server/internal/platform"
@@ -35,7 +34,6 @@ type Deps struct {
 	FileHandler      *filepkg.Handler
 	AdminHandler     *admin.Handler
 	StorageAdmin     *storage.AdminHandler
-	ContestHandler   *contest.Handler
 	WorkspaceHandler *workspace.Handler
 	QuotaSvc         *quota.Service
 	UserStore        *auth.Store
@@ -78,11 +76,9 @@ func New(d Deps) *gin.Engine {
 	return r
 }
 
-// registerPublicRoutes 挂载无需登录的站点信息、作品展示和分享读取端点。
+// registerPublicRoutes 挂载无需登录的站点信息和分享读取端点。
 func registerPublicRoutes(api *gin.RouterGroup, d Deps) {
 	api.GET("/platform", d.PlatformHandler.Public)
-	api.GET("/showcase", d.ContestHandler.Showcase)
-	api.GET("/showcase/:id/cover", d.ContestHandler.ShowcaseCover)
 	api.GET("/shared/:token", d.WorkspaceHandler.GetShared)
 	api.GET("/shared/:token/files/:key", d.WorkspaceHandler.GetSharedFile)
 }
@@ -97,7 +93,7 @@ func registerAuthRoutes(api *gin.RouterGroup, d Deps) {
 	authGroup.POST("/refresh", d.QuotaSvc.RateLimitByIP("refresh", 30), d.AuthHandler.Refresh)
 }
 
-// registerUserRoutes 挂载登录用户的受保护端点：画布/资产/文件/大赛/社区和工作空间。
+// registerUserRoutes 挂载登录用户的受保护端点：画布、资产、文件和工作空间。
 func registerUserRoutes(api *gin.RouterGroup, d Deps) {
 	authed := api.Group("")
 	authed.Use(middleware.RequireAuthWithSession(d.AuthMgr, d.UserStore))
@@ -142,25 +138,9 @@ func registerUserRoutes(api *gin.RouterGroup, d Deps) {
 	authed.GET("/files/:key", d.FileHandler.Download)
 	authed.DELETE("/files/:key", d.FileHandler.Trash)
 
-	// 创作者大赛：视频投稿、公开创作配方与点赞排名。
-	authed.GET("/contest", d.ContestHandler.List)
-	authed.POST("/contest", d.ContestHandler.Create)
-	authed.GET("/contest/:id", d.ContestHandler.Detail)
-	authed.GET("/contest/:id/cover", d.ContestHandler.Cover)
-	authed.GET("/contest/:id/media", d.ContestHandler.Media)
-	authed.GET("/contest/:id/files/:key", d.ContestHandler.SnapshotFile)
-	authed.POST("/contest/:id/like", d.ContestHandler.Like)
-	authed.POST("/contest/:id/favorite", d.ContestHandler.Favorite)
-	authed.DELETE("/contest/:id/favorite", d.ContestHandler.Unfavorite)
-
-	// 创作者社区：关注流、收藏列表与公开创作者主页。
-	authed.GET("/creators/feed", d.ContestHandler.Feed)
-	authed.GET("/creators/:id", d.ContestHandler.Creator)
-	authed.POST("/creators/:id/follow", d.ContestHandler.Follow)
-	authed.DELETE("/creators/:id/follow", d.ContestHandler.Unfollow)
 }
 
-// registerAdminRoutes 挂载管理后台：用户 / 站点 / 邮箱 / 存储 / 大赛审核，
+// registerAdminRoutes 挂载管理后台：用户 / 站点 / 邮箱 / 存储，
 // 全部经 RequireAdmin + 审计中间件，敏感写操作再叠加超管与二次确认。
 func registerAdminRoutes(api *gin.RouterGroup, d Deps) {
 	authed := api.Group("")
@@ -192,8 +172,4 @@ func registerAdminRoutes(api *gin.RouterGroup, d Deps) {
 	adminGroup.GET("/storage-cleanup", middleware.RequireSuperAdmin(), d.StorageAdmin.CleanupStats)
 	adminGroup.POST("/storage-cleanup", middleware.RequireSuperAdmin(), middleware.RequireAdminConfirmation(), d.StorageAdmin.PurgeExpired)
 	adminGroup.GET("/audit-logs", middleware.RequireSuperAdmin(), d.AdminHandler.AuditLogs)
-	// 创作者大赛审核
-	adminGroup.GET("/contest", d.ContestHandler.AdminList)
-	adminGroup.POST("/contest/:id/review", d.ContestHandler.Review)
-	adminGroup.POST("/contest/:id/featured", d.ContestHandler.Feature)
 }

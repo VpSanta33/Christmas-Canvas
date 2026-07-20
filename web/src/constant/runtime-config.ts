@@ -8,7 +8,7 @@
 type RuntimeConfig = {
     ANALYTICS_GA4_ID?: string; // GA4 衡量 ID（G-XXXX）
     ANALYTICS_BAIDU_ID?: string; // 百度统计站点 ID
-    APP_MODE?: string; // "local" | "backend"，默认 local（离线本地优先）
+    APP_MODE?: string; // "local" | "backend"，默认 backend（自托管平台优先）
     API_BASE_URL?: string; // backend 模式下的后端地址，如 http://localhost:8080/api
 };
 
@@ -30,12 +30,11 @@ function read(key: keyof RuntimeConfig, buildTime: string | undefined, fallback 
 export const ANALYTICS_GA4_ID = read("ANALYTICS_GA4_ID", import.meta.env.VITE_ANALYTICS_GA4_ID);
 export const ANALYTICS_BAIDU_ID = read("ANALYTICS_BAIDU_ID", import.meta.env.VITE_ANALYTICS_BAIDU_ID);
 
-// 执行模式：local（默认，浏览器直连 AI、数据存本地）或 backend（走自建 Go 后端）。
-export const APP_MODE = (read("APP_MODE", import.meta.env.VITE_APP_MODE, "local") || "local").toLowerCase();
+// 执行模式：backend（默认，走自建 Go 后端）或 local（显式启用的免登录本地模式）。
+export const APP_MODE = (read("APP_MODE", import.meta.env.VITE_APP_MODE, "backend") || "backend").toLowerCase();
 // backend 模式下后端 API 前缀，去掉尾部斜杠便于拼接。
 export const API_BASE_URL = read("API_BASE_URL", import.meta.env.VITE_API_BASE_URL, "/api").replace(/\/+$/, "");
 
 export function isBackendMode(): boolean {
     return APP_MODE === "backend";
 }
-

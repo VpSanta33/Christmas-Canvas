@@ -488,9 +488,27 @@ function uniqueModelOptions(models: string[]) {
 export function buildApiUrl(baseUrl: string, path: string) {
     let normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
     normalizedBaseUrl = normalizeArkPlanBaseUrl(normalizedBaseUrl);
+    normalizedBaseUrl = normalizeApiEndpointBaseUrl(normalizedBaseUrl);
     const lowerBaseUrl = normalizedBaseUrl.toLowerCase();
     const apiBaseUrl = lowerBaseUrl.endsWith("/v1") || lowerBaseUrl.endsWith("/api/v3") || lowerBaseUrl.endsWith("/api/plan/v3") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
     return `${apiBaseUrl}${path}`;
+}
+
+function normalizeApiEndpointBaseUrl(baseUrl: string) {
+    const endpointSuffixes = ["/contents/generations/tasks", "/videos"];
+    try {
+        const url = new URL(baseUrl);
+        const path = url.pathname.replace(/\/+$/, "");
+        const lowerPath = path.toLowerCase();
+        const suffix = endpointSuffixes.find((item) => lowerPath.endsWith(item));
+        if (!suffix) return baseUrl;
+        url.pathname = path.slice(0, -suffix.length) || "/";
+        url.search = "";
+        url.hash = "";
+        return url.toString().replace(/\/+$/, "");
+    } catch {
+        return baseUrl;
+    }
 }
 
 function normalizeArkPlanBaseUrl(baseUrl: string) {

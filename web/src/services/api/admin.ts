@@ -46,7 +46,6 @@ export async function revokeUserSessions(id: string): Promise<void> {
 export type AdminOverview = {
     users: { total: number; disabled: number };
     storage: { files: number; bytes: number };
-    content: { contestPending: number; contestApproved: number };
 };
 
 export async function fetchOverview(): Promise<AdminOverview> {
@@ -69,43 +68,6 @@ export async function fetchUserMedia(id: string): Promise<UserMediaItem[]> {
 
 export async function fetchUserMediaBlob(id: string, storageKey: string): Promise<string> {
     const { data } = await httpClient.get<Blob>(`/admin/users/${id}/media/${encodeURIComponent(storageKey)}`, { responseType: "blob" });
-    return URL.createObjectURL(data);
-}
-
-export type AdminContestStatus = "pending" | "approved" | "rejected";
-
-export type AdminContestEntry = {
-    id: string;
-    title: string;
-    description: string;
-    recipeType: "prompt" | "skill";
-    recipeContent: string;
-    videoMimeType: string;
-    authorId: string;
-    authorName: string;
-    authorEmail: string;
-    likes: number;
-    status: AdminContestStatus;
-    reviewNote: string;
-    featured: boolean;
-    createdAt: string;
-};
-
-export async function fetchAdminContest(status: AdminContestStatus | "all"): Promise<AdminContestEntry[]> {
-    const { data } = await httpClient.get<{ items: AdminContestEntry[] }>("/admin/contest", { params: { status } });
-    return data.items ?? [];
-}
-
-export async function reviewContestEntry(id: string, action: "approve" | "reject", note?: string): Promise<void> {
-    await httpClient.post(`/admin/contest/${id}/review`, { action, note });
-}
-
-export async function featureContestEntry(id: string, featured: boolean): Promise<void> {
-    await httpClient.post(`/admin/contest/${id}/featured`, { featured });
-}
-
-export async function fetchAdminContestBlob(id: string, kind: "cover" | "media"): Promise<string> {
-    const { data } = await httpClient.get<Blob>(`/contest/${encodeURIComponent(id)}/${kind}`, { responseType: "blob" });
     return URL.createObjectURL(data);
 }
 

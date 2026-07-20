@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, Cloud, LayoutDashboard, Mail, Megaphone, Settings2, ShieldCheck, Trophy, Users } from "lucide-react";
+import { ArrowLeft, Cloud, LayoutDashboard, Mail, Megaphone, Settings2, ShieldCheck, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { cn } from "@/lib/utils";
@@ -8,7 +8,6 @@ import { useAuthStore } from "@/stores/use-auth-store";
 const navItems = [
     { to: "/admin", label: "概览", icon: LayoutDashboard, exact: true },
     { to: "/admin/users", label: "用户管理", icon: Users, exact: false, superOnly: true },
-    { to: "/admin/contest", label: "大赛审核", icon: Trophy, exact: false },
     { to: "/admin/platform", label: "站点设置", icon: Settings2, exact: false, superOnly: true },
     { to: "/admin/announcements", label: "公告管理", icon: Megaphone, exact: false, superOnly: true },
     { to: "/admin/email", label: "邮箱服务", icon: Mail, exact: false, superOnly: true },

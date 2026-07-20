@@ -7,7 +7,6 @@ import { RequireSuperAdmin } from "@/components/layout/require-super-admin";
 import AdminLayout from "@/layouts/admin-layout";
 import UserLayout from "@/layouts/user-layout";
 import AdminAnnouncementsPage from "@/pages/admin/announcements";
-import AdminContestPage from "@/pages/admin/contest";
 import AdminEmailPage from "@/pages/admin/email";
 import AdminOverviewPage from "@/pages/admin/overview";
 import AdminPlatformPage from "@/pages/admin/platform";
@@ -17,14 +16,10 @@ import AdminUsersPage from "@/pages/admin/users";
 import AssetsPage from "@/pages/assets";
 import CanvasPage from "@/pages/canvas";
 import CanvasProjectPage from "@/pages/canvas/project";
-import ContestPage from "@/pages/contest";
-import CreatorProfilePage from "@/pages/creators/profile";
-import CreatorsPage from "@/pages/creators";
 import HomePage from "@/pages/home";
 import ImagePage from "@/pages/image";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
-import SkillsPage from "@/pages/skills";
 import WorkspacePage, { SharedCanvasPage } from "@/pages/workspace";
 import VideoPage from "@/pages/video";
 
@@ -49,14 +44,10 @@ export const router = createBrowserRouter([
                 lazy: async () => ({ Component: (await import("@/pages/director")).default }),
             },
             { path: "/assets", element: <AssetsPage /> },
-            { path: "/creators", element: <CreatorsPage /> },
-            { path: "/creators/:id", element: <CreatorProfilePage /> },
-            { path: "/skills", element: <SkillsPage /> },
             { path: "/tasks", element: <WorkspacePage initialTab="tasks" /> },
             { path: "/workspace", element: <WorkspacePage initialTab="tasks" /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
-            { path: "/contest", element: <ContestPage /> },
         ],
     },
     {
@@ -77,7 +68,6 @@ export const router = createBrowserRouter([
                     </RequireSuperAdmin>
                 ),
             },
-            { path: "/admin/contest", element: <AdminContestPage /> },
             {
                 path: "/admin/platform",
                 element: (

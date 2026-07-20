@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { Link, useNavigate } from "react-router";
-import { Keyboard, LogIn, LogOut, Puzzle, Settings2, Shield, UsersRound } from "lucide-react";
+import { Keyboard, LogIn, LogOut, Puzzle, Settings2, Shield } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { isBackendMode } from "@/constant/runtime-config";
@@ -58,16 +58,6 @@ export function UserStatusActions({ variant = "default", onOpenShortcuts, onOpen
                 <button type="button" className={naturalIconClass} style={iconStyle} onClick={onOpenShortcuts} aria-label="快捷键" title="快捷键">
                     <Keyboard className="size-4" />
                 </button>
-            ) : null}
-            {backendMode && !user ? (
-                <Link
-                    to="/creators"
-                    className="ml-1 hidden h-8 shrink-0 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-2.5 text-xs font-medium text-stone-700 transition hover:border-stone-400 hover:bg-stone-50 hover:text-stone-950 sm:inline-flex dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:border-stone-600 dark:hover:bg-stone-800 dark:hover:text-white"
-                    style={variant === "canvas" ? { ...iconStyle, background: canvasTheme.toolbar.panel, borderColor: canvasTheme.toolbar.border } : undefined}
-                >
-                    <UsersRound className="size-3.5" />
-                    <span>创作者中心</span>
-                </Link>
             ) : null}
             {backendMode && !user ? (
                 <Link

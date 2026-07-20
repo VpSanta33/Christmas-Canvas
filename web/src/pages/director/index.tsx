@@ -15,6 +15,7 @@ import { uploadImage, type UploadedImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useDirectorStore } from "@/stores/use-director-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType } from "@/types/canvas";
 import type { DirectorComposition, DirectorSceneSettings, DirectorShot } from "@/types/director";
 import "./director.css";
@@ -33,6 +34,8 @@ export default function DirectorPage() {
     const [addingToCanvas, setAddingToCanvas] = useState(false);
     const [uploadingPanorama, setUploadingPanorama] = useState(false);
     const [selectedCanvasId, setSelectedCanvasId] = useState<string | undefined>(undefined);
+    const theme = useThemeStore((state) => state.theme);
+    const dark = theme === "dark";
 
     const hydrated = useDirectorStore((state) => state.hydrated);
     const sceneTitle = useDirectorStore((state) => state.sceneTitle);
@@ -216,12 +219,28 @@ export default function DirectorPage() {
     return (
         <ConfigProvider
             theme={{
-                algorithm: antdTheme.darkAlgorithm,
-                token: { colorPrimary: "#f0b94b", colorInfo: "#f0b94b", colorBgContainer: "#191d1e", colorBorder: "#353b3d", colorText: "#e8e7e2", borderRadius: 4 },
-                components: { Button: { primaryColor: "#15130e", primaryShadow: "none" }, Slider: { railBg: "#343a3c", railHoverBg: "#424a4c", trackBg: "#d69d36", trackHoverBg: "#efb94f", handleColor: "#efb94f" } },
+                algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+                token: {
+                    colorPrimary: dark ? "#f0b94b" : "#171717",
+                    colorInfo: dark ? "#f0b94b" : "#171717",
+                    colorBgContainer: dark ? "#191d1e" : "#ffffff",
+                    colorBorder: dark ? "#353b3d" : "#d7dad6",
+                    colorText: dark ? "#e8e7e2" : "#242725",
+                    borderRadius: 4,
+                },
+                components: {
+                    Button: { primaryColor: dark ? "#15130e" : "#ffffff", primaryShadow: "none" },
+                    Slider: {
+                        railBg: dark ? "#343a3c" : "#d4d8d5",
+                        railHoverBg: dark ? "#424a4c" : "#c4c9c5",
+                        trackBg: dark ? "#d69d36" : "#1f2933",
+                        trackHoverBg: dark ? "#efb94f" : "#111827",
+                        handleColor: dark ? "#efb94f" : "#1f2933",
+                    },
+                },
             }}
         >
-            <main className="director-studio">
+            <main className={`director-studio ${dark ? "is-dark" : "is-light"}`}>
                 <header className="director-toolbar">
                     <div className="director-toolbar-group">
                         <Tooltip title="镜头清单">
@@ -281,7 +300,7 @@ export default function DirectorPage() {
                                     </div>
                                 }
                             >
-                                <DirectorScene ref={sceneRef} shot={activeShot} panoramaUrl={panoramaUrl} onCameraChange={(angles) => changeShot(angles)} />
+                                <DirectorScene ref={sceneRef} shot={activeShot} panoramaUrl={panoramaUrl} dark={dark} onCameraChange={(angles) => changeShot(angles)} />
                             </Suspense>
                             <CompositionGuide composition={activeShot.composition} />
                             <div className="director-view-meta director-view-meta-top">
@@ -302,10 +321,10 @@ export default function DirectorPage() {
                 </div>
 
                 <input ref={panoramaInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void uploadPanorama(event.target.files?.[0])} />
-                <Drawer title="镜头清单" placement="left" size={320} open={shotDrawerOpen} onClose={() => setShotDrawerOpen(false)} rootClassName="director-mobile-drawer">
+                <Drawer getContainer={false} title="镜头清单" placement="left" size={320} open={shotDrawerOpen} onClose={() => setShotDrawerOpen(false)} rootClassName="director-mobile-drawer">
                     {shotList}
                 </Drawer>
-                <Drawer title="导演控制" placement="right" size={340} open={controlsDrawerOpen} onClose={() => setControlsDrawerOpen(false)} rootClassName="director-mobile-drawer">
+                <Drawer getContainer={false} title="导演控制" placement="right" size={340} open={controlsDrawerOpen} onClose={() => setControlsDrawerOpen(false)} rootClassName="director-mobile-drawer">
                     {controls}
                 </Drawer>
             </main>

@@ -4,7 +4,6 @@ import { App, Button, Checkbox, Drawer, Empty, Input, Modal, Tag, Typography } f
 import localforage from "localforage";
 import { nanoid } from "nanoid";
 import { saveAs } from "file-saver";
-import { useSearchParams } from "react-router-dom";
 
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { ModelPicker } from "@/components/model-picker";
@@ -17,7 +16,6 @@ import { deleteStoredMedia, resolveMediaUrl, uploadMediaFile } from "@/services/
 import { notifyGenerationHistoryChanged, syncGenerationTask } from "@/services/generation-history";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { createVideoGenerationTask, pollVideoGenerationTask, storeGeneratedVideo, type VideoGenerationTask } from "@/services/api/video";
-import { fetchContestEntry } from "@/services/api/contest";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
 import { modelOptionLabel, modelOptionName, useConfigStore, useEffectiveConfig, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, type AiConfig } from "@/stores/use-config-store";
@@ -76,7 +74,6 @@ const VIDEO_TASK_TIMEOUT_MS = 12 * 60 * 1000;
 
 export default function VideoPage() {
     const { message } = App.useApp();
-    const [searchParams] = useSearchParams();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
     const config = useConfigStore((state) => state.config);
@@ -105,7 +102,6 @@ export default function VideoPage() {
     const clearVideoCommand = useWorkbenchAgentStore((state) => state.clearVideoCommand);
     const processedCommandRef = useRef(0);
     const batchPromptsRef = useRef<string[]>([]);
-    const loadedContestEntryRef = useRef("");
 
     const model = effectiveConfig.videoModel || effectiveConfig.model;
     const viraldance = viraldanceProfile(modelOptionName(model));
@@ -121,22 +117,6 @@ export default function VideoPage() {
     useEffect(() => {
         void refreshLogs();
     }, []);
-
-    useEffect(() => {
-        const entryId = searchParams.get("contest") || "";
-        if (!entryId || loadedContestEntryRef.current === entryId) return;
-        loadedContestEntryRef.current = entryId;
-        void fetchContestEntry(entryId)
-            .then((entry) => {
-                const content = entry.recipeType === "skill" ? `请按照以下视频创作 Skill 执行：\n\n${entry.recipeContent}` : entry.recipeContent;
-                setPrompt(content);
-                message.success(entry.recipeType === "skill" ? "Skill 已载入视频创作台" : "同款提示词已载入视频创作台");
-            })
-            .catch(() => {
-                loadedContestEntryRef.current = "";
-                message.error("创作配方载入失败");
-            });
-    }, [message, searchParams]);
 
     const addReferences = async (files?: FileList | File[] | null) => {
         const selectedFiles = Array.from(files || []);

@@ -19,7 +19,7 @@ GA4_ID=$(sanitize_id "${ANALYTICS_GA4_ID:-}")
 BAIDU_ID=$(sanitize_id "${ANALYTICS_BAIDU_ID:-}")
 API_URL=$(sanitize_api_url "${API_BASE_URL:-/api}")
 
-case "${APP_MODE:-local}" in
+case "${APP_MODE:-backend}" in
     backend) APP_MODE_VALUE="backend" ;;
     *) APP_MODE_VALUE="local" ;;
 esac
